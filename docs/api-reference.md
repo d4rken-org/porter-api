@@ -81,7 +81,7 @@ Be aware that, to let the service to use the latest code, "Run/Debug configurati
   `UserServiceArgs` is like `Intent` in Bound services, which decides which service will be started and some options.
 
   `ServiceConnection` is same as Bound services, but only `onServiceConnected` and `onServiceDisconnected` are used.
-  
+
   Unlike Bound service, the service class must implement `IBinder` interface. The usual usage is `public class YourService extends IYouAidlInterface.Stub`.
 
   The service class can have two constructors, one is default constructor, another is with `Context` parameter available from Shizuku v13. Shizuku v13 will try the constructor with `Context` parameter first. Older Shizuku will always use the default constructor. Beaware that the `Context` does not work as same as `Context` in normal Android application. See "Use Android APIs in user service" below.
@@ -148,14 +148,14 @@ We also provides [HiddenApiRefinePlugin](https://github.com/RikkaApps/HiddenApiR
 ### 12.1.0
 
 - Automatically initialize Sui if you are using Shizuku
-  
+
   You can opt-out this behavior by calling `ShizukuProvider#disableAutomaticSuiInitialization()` before `ShizukuProvider#onCreate()` is called
 
 - Added a lot more detailed document for most APIs
 - Drop pre-v11 support
-  
+
   You don't need to worry about this problem, just show a "not supported" message if the user really uses pre-v11.
-  
+
   - Sui was born after API v11, Sui users are not affected at all.
   - For Shizuku, according to Google Play statistics, more than 95% of users are on v11+. Shizuku drops Android 5 support from v5, many of the remaining 5% are such people who are stuck at super old versions.
   - A useful API, UserService, is added from v11 and stable on v12. I believe that many Shizuku apps already have a "version > 11" check.
