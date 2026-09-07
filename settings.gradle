@@ -5,25 +5,13 @@ pluginManagement {
         mavenLocal()
     }
     plugins {
-        id("com.android.application") version "8.10.0"
-        id("com.android.library") version "8.10.0"
+        id("com.android.application") version "8.11.1"
+        id("com.android.library") version "8.11.1"
         id("org.jetbrains.kotlin.android") version "2.1.21"
         id("dev.rikka.tools.autoresconfig") version "1.2.2"
         id("dev.rikka.tools.materialthemebuilder") version "1.5.1"
         id("dev.rikka.tools.refine") version "4.4.0"
     }
-}
-
-plugins {
-    id("com.android.settings") version "8.10.0"
-}
-
-android {
-    compileSdk = 36
-    minSdk = 24
-    targetSdk = 36
-    ndkVersion = "29.0.13113456"
-    buildToolsVersion = "36.0.0"
 }
 
 dependencyResolutionManagement {
@@ -47,6 +35,9 @@ dependencyResolutionManagement {
     }
 }
 
-include ":aidl", ":shared", ":api", ":provider", ":rish"
-include ":demo", ":demo-hidden-api-stub"
-include ":server-shared"
+rootProject.name = "porter-api"
+include ":aidl", ":shared", ":api", ":provider", ":client"
+
+if (providers.gradleProperty("includeExtras").getOrElse("false").toBoolean()) {
+    include ":rish", ":server-shared", ":demo", ":demo-hidden-api-stub"
+}

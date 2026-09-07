@@ -1,0 +1,15 @@
+pluginManagement {
+    repositories { google(); mavenCentral(); gradlePluginPortal() }
+}
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        maven {
+            url = providers.gradleProperty("sdkRepository").get()
+            content { includeGroup("com.github.d4rken-org.porter-api") }
+        }
+        google()
+        mavenCentral()
+    }
+}
+rootProject.name = "porter-sdk-consumer"

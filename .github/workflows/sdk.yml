@@ -1,0 +1,35 @@
+name: SDK validation
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+      - name: Test and publish SDK locally
+        run: ./gradlew -Dmaven.repo.local="$RUNNER_TEMP/porter-maven" :client:testDebugUnitTest publishToMavenLocal
+      - name: Check publication metadata
+        run: python3 tools/verify-publication.py "$RUNNER_TEMP/porter-maven" 0.1.0
+      - name: Build independent consumer
+        run: ./gradlew -p tests/consumer -PsdkRepository="$RUNNER_TEMP/porter-maven" assembleDebug
+      - name: Reject a mixed upstream SDK graph
+        shell: bash
+        run: |
+          if ./gradlew -p tests/consumer -PsdkRepository="$RUNNER_TEMP/porter-maven" -PwithLegacySdk=true assembleDebug > "$RUNNER_TEMP/conflict.log" 2>&1; then
+            echo "Mixed SDK dependencies unexpectedly resolved"
+            exit 1
+          fi
+          cat "$RUNNER_TEMP/conflict.log"
+          grep -q 'conflict on capability' "$RUNNER_TEMP/conflict.log"

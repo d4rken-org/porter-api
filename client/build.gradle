@@ -1,0 +1,12 @@
+plugins { id "com.android.library" }
+
+android {
+    namespace = "eu.darken.porter.client"
+}
+
+dependencies {
+    api project(":api")
+    api project(":provider")
+    testImplementation "junit:junit:4.13.2"
+    testImplementation "org.mockito:mockito-core:5.14.2"
+}
