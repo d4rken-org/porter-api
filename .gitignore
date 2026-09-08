@@ -15,5 +15,7 @@
 local.properties
 /.idea
 
-/.claude/
+/.claude/*
+!/.claude/CLAUDE.md
+!/.claude/rules/
 /out/

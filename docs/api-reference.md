@@ -1,6 +1,6 @@
 # Shizuku-compatible API reference
 
-For dependencies, providers and backend selection, follow the [Porter integration guide](https://d4rken-org.github.io/porter/developers.html). The method reference and historical upstream changelog below retain the original API names.
+For dependencies, providers and backend selection, follow the [Porter integration guide](https://porter.darken.eu/developers). The method reference and historical upstream changelog below retain the original API names.
 
 ### Request permission
 

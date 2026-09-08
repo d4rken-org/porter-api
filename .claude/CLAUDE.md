@@ -9,3 +9,5 @@ The `client` module comes from Porter and uses Apache 2.0 (`client/LICENSE`). Up
 JitPack publishes only `aidl`, `shared`, `api`, `provider` and `client`. Native/server/demo modules are optional for standalone SDK builds and are included by the Porter app build where needed.
 
 Use the requested Claude review before committing significant changes. Do not publish repositories, tags or external builds before the maintainer's publication step.
+
+Keep agent context under `.claude/`; do not add top-level AGENTS files or directories. Use only DebugBadger or ADB for device interaction. Never control the host mouse or keyboard.
