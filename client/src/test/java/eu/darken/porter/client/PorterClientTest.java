@@ -71,4 +71,41 @@ public class PorterClientTest {
                 .thenThrow(mock(PackageManager.NameNotFoundException.class));
         PorterClient.getActiveBackend(context);
     }
+
+    @Test public void autoSelectsPorterWhenItsPermissionExists() throws Exception {
+        PermissionInfo permission = mock(PermissionInfo.class);
+        permission.packageName = "eu.darken.porter";
+        doReturn(permission).when(packages).getPermissionInfo(PorterClient.PERMISSION, 0);
+        assertEquals(PorterClient.Backend.PORTER, PorterClient.getActiveBackend(context));
+        doThrow(mock(PackageManager.NameNotFoundException.class)).when(packages).getPermissionInfo(PorterClient.PERMISSION, 0);
+        assertEquals(PorterClient.Backend.PORTER, PorterClient.getActiveBackend(context));
+    }
+
+    @Test public void explicitShizukuChoiceWinsWhenPorterIsInstalled() throws Exception {
+        PermissionInfo permission = mock(PermissionInfo.class);
+        permission.packageName = "eu.darken.porter";
+        doReturn(permission).when(packages).getPermissionInfo(PorterClient.PERMISSION, 0);
+        when(preferences.getString("backend", "AUTO")).thenReturn("SHIZUKU");
+        assertEquals(PorterClient.Backend.SHIZUKU, PorterClient.getActiveBackend(context));
+    }
+
+    @Test public void explicitPorterChoiceDoesNotFallBackWhenPorterIsMissing() {
+        when(preferences.getString("backend", "AUTO")).thenReturn("PORTER");
+        assertEquals(PorterClient.Backend.PORTER, PorterClient.getActiveBackend(context));
+    }
+
+    @Test public void unrecognizedPreferenceUsesAutomaticSelection() {
+        when(preferences.getString("backend", "AUTO")).thenReturn("DELETED_BACKEND");
+        assertEquals(PorterClient.Backend.SHIZUKU, PorterClient.getActiveBackend(context));
+    }
+
+    @Test public void failedPreferenceWriteDoesNotChangeActiveBackend() {
+        SharedPreferences.Editor editor = mock(SharedPreferences.Editor.class);
+        when(preferences.edit()).thenReturn(editor);
+        when(editor.putString("backend", "PORTER")).thenReturn(editor);
+        when(editor.commit()).thenReturn(false);
+        assertEquals(PorterClient.Backend.SHIZUKU, PorterClient.getActiveBackend(context));
+        assertFalse(PorterClient.setBackendForNextProcess(context, PorterClient.Backend.PORTER));
+        assertEquals(PorterClient.Backend.SHIZUKU, PorterClient.getActiveBackend(context));
+    }
 }
