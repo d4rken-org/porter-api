@@ -1,6 +1,7 @@
 package eu.darken.porter.porsh;
 
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
 import android.util.Log;
 
 import java.util.concurrent.CountDownLatch;
@@ -65,6 +66,7 @@ public class PorshHost {
     private int pid;
     private int ptmx;
     private volatile int exitCode = Integer.MAX_VALUE;
+    private volatile long exitedAtMillis;
 
     public PorshHost(
             String[] args, String[] env, String dir,
@@ -109,11 +111,16 @@ public class PorshHost {
 
     void onExited(int code) {
         exitCode = code;
+        exitedAtMillis = SystemClock.elapsedRealtime();
         exited.countDown();
     }
 
     boolean hasExited() {
         return exited.getCount() == 0;
+    }
+
+    long getExitedAtMillis() {
+        return exitedAtMillis;
     }
 
     int awaitExitCode(long timeoutMillis) {
