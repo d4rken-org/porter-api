@@ -156,7 +156,7 @@ public class PorshTerminal {
         return exitCode;
     }
 
-    private static native byte prepare();
+    static native byte prepare();
 
     private static native int start(byte tty, int stdin, int stdout, int stderr);
 
