@@ -23,7 +23,7 @@ dependencyResolutionManagement {
 Then add:
 
 ```kotlin
-implementation("com.github.d4rken-org.porter-api:client:0.1.0")
+implementation("com.github.d4rken-org.porter-api:client:0.2.0")
 ```
 
 The client artifact includes the compatible API modules transitively. Remove upstream `dev.rikka.shizuku` SDK dependencies and any copied Porter adapter classes to avoid duplicate classes. Keep your existing `rikka.shizuku.*` imports.

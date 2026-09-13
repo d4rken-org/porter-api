@@ -32,7 +32,7 @@ jobs:
       - name: Publish SDK locally
         run: ./gradlew -Dmaven.repo.local="$RUNNER_TEMP/porter-maven" publishToMavenLocal
       - name: Check publication metadata
-        run: python3 tools/verify-publication.py "$RUNNER_TEMP/porter-maven" 0.1.0
+        run: python3 tools/verify-publication.py "$RUNNER_TEMP/porter-maven" 0.2.0
       - name: Build independent consumer
         run: ./gradlew -p tests/consumer -PsdkRepository="$RUNNER_TEMP/porter-maven" assembleDebug
       - name: Reject a mixed upstream SDK graph
