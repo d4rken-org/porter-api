@@ -119,6 +119,10 @@ public class PorshHost {
         return exited.getCount() == 0;
     }
 
+    int getExitCode() {
+        return exitCode;
+    }
+
     long getExitedAtMillis() {
         return exitedAtMillis;
     }
