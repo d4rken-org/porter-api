@@ -1,0 +1,72 @@
+# Path-based PR labels, applied by .github/workflows/pr-labeler.yml
+#
+# Only labels that follow objectively from the changed paths belong here.
+# Type labels (bug/enhancement/Chore/documentation) are not derivable from a
+# diff and stay manual, as do the issue-triage labels.
+#
+# A component label means "this area is touched", including its tests and
+# module tooling. It does not assert that the area's behavior changed, and
+# "c: Protocol" in particular is not a breaking-change marker.
+#
+# Under pull_request_target this file is read from the base branch, so edits
+# only take effect once they are merged into main.
+
+"c: Protocol":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "aidl/**"
+          - "shared/**"
+          # Holds the protocol version constants, which is why it is carved
+          # out of the generic *.gradle rule under "Build process" below.
+          - "manifest.gradle"
+
+"c: SDK":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "api/**"
+          - "provider/**"
+
+"c: Client":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "client/**"
+
+"c: Service":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "server-shared/**"
+
+"c: Shell":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "rish/**"
+
+"c: Examples":
+  - changed-files:
+      - any-glob-to-any-file:
+          - "demo/**"
+          - "demo-hidden-api-stub/**"
+
+"Build process":
+  # Every *.gradle except manifest.gradle, which carries protocol constants
+  # rather than build configuration. Both globs must hold for the same file.
+  - changed-files:
+      - all-globs-to-any-file:
+          - "**/*.gradle"
+          - "!manifest.gradle"
+  - changed-files:
+      - any-glob-to-any-file:
+          - "**/*.gradle.kts"
+          - "**/gradle.properties"
+          - "gradle/**"
+          - "gradlew"
+          - "gradlew.bat"
+          - "**/CMakeLists.txt"
+          - "**/*proguard*"
+          - "**/consumer-rules.pro"
+          - ".github/workflows/**"
+          - ".github/actions/**"
+          - ".github/labeler.yml"
+          - "jitpack.yml"
+          - "tools/verify-publication.py"
+          - "tests/consumer/**"
