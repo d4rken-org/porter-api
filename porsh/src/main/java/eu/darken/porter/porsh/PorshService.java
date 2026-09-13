@@ -4,24 +4,28 @@ import android.os.Binder;
 import android.os.IBinder;
 import android.os.Parcel;
 import android.os.ParcelFileDescriptor;
+import android.os.SystemClock;
 import android.system.Os;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
-import java.util.HashMap;
-import java.util.Map;
-
 public abstract class PorshService {
 
     private static final String TAG = "PorshService";
 
-    private static final Map<Integer, PorshHost> HOSTS = new HashMap<>();
-
     private static final boolean IS_ROOT = Os.getuid() == 0;
 
-    private static final long EXIT_CODE_TIMEOUT_MILLIS = 5_000;
+    private final PorshHostRegistry registry;
+
+    public PorshService() {
+        this(new PorshHostRegistry(PorshHost::new, SystemClock::elapsedRealtime));
+    }
+
+    PorshService(PorshHostRegistry registry) {
+        this.registry = registry;
+    }
 
     private void createHost(
             String[] args, String[] env, String dir,
@@ -50,35 +54,15 @@ public abstract class PorshService {
             env = null;
         }
 
-        PorshHost host = new PorshHost(args, env, dir, tty, stdin, stdout, stderr);
-        host.start();
-        Log.d(TAG, "Forked " + host.getPid());
-
-        HOSTS.put(callingPid, host);
+        registry.createHost(callingPid, args, env, dir, tty, stdin, stdout, stderr);
     }
 
     private void setWindowSize(long size) {
-        int callingPid = Binder.getCallingPid();
-
-        PorshHost host = HOSTS.get(callingPid);
-        if (host == null) {
-            Log.d(TAG, "Not existing host created by " + callingPid);
-            return;
-        }
-
-        host.setWindowSize(size);
+        registry.setWindowSize(Binder.getCallingPid(), size);
     }
 
     private int getExitCode() {
-        int callingPid = Binder.getCallingPid();
-
-        PorshHost host = HOSTS.get(callingPid);
-        if (host == null) {
-            Log.d(TAG, "Not existing host created by " + callingPid);
-            return -1;
-        }
-
-        return host.awaitExitCode(EXIT_CODE_TIMEOUT_MILLIS);
+        return registry.getExitCode(Binder.getCallingPid());
     }
 
     public abstract void enforceCallingPermission(String func);
