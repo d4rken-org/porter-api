@@ -5,7 +5,7 @@ plugins {
 apply from: "manifest.gradle"
 
 def sdkVersion = providers.gradleProperty("version")
-        .orElse(providers.environmentVariable("VERSION")).getOrElse("0.1.0")
+        .orElse(providers.environmentVariable("VERSION")).getOrElse("0.2.0")
 def publishedModules = ["aidl", "shared", "api", "provider", "client"]
 
 allprojects {

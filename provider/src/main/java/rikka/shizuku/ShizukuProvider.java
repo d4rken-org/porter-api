@@ -119,14 +119,14 @@ public class ShizukuProvider extends ContentProvider {
 
         Log.d(TAG, "request binder in non-provider process");
 
+        // Below API 33 a registered receiver is exported, so any app can send this action to us.
+        // Treat the broadcast as a notification only and read the binder from the provider, which
+        // android:permission and the same-uid exemption restrict to this app and the server.
         BroadcastReceiver receiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                BinderContainer container = intent.getParcelableExtra(EXTRA_BINDER);
-                if (container != null && container.binder != null) {
-                    Log.i(TAG, "binder received from broadcast");
-                    Shizuku.onBinderReceived(container.binder, context.getPackageName());
-                }
+                Log.i(TAG, "binder announced by broadcast");
+                fetchBinderFromProvider(context);
             }
         };
 
@@ -136,6 +136,10 @@ public class ShizukuProvider extends ContentProvider {
             context.registerReceiver(receiver, new IntentFilter(ACTION_BINDER_RECEIVED));
         }
 
+        fetchBinderFromProvider(context);
+    }
+
+    private static void fetchBinderFromProvider(@NonNull Context context) {
         Bundle reply;
         try {
             reply = context.getContentResolver().call(Uri.parse("content://" + context.getPackageName() + ".shizuku"),
