@@ -1,0 +1,44 @@
+name: App compatibility
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  app-build:
+    name: Porter app build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout SDK
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          path: porter-api
+          persist-credentials: false
+      - name: Checkout Porter app
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          repository: d4rken-org/porter
+          ref: main
+          path: porter
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 #v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 #v3.2.2
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c #v5.0.2
+      - name: Install Android tools
+        run: python3 porter/tools/ci/install-sdk.py "platforms;android-37.0" "build-tools;37.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
+      - name: Build the app against this SDK checkout
+        working-directory: porter
+        run: |
+          set -euo pipefail
+          printf 'api.useLocal=true\napi.dir=%s\n' "$GITHUB_WORKSPACE/porter-api" > local.properties
+          cat local.properties
+          ./gradlew :manager:assembleDebug :server:assembleDebug :probe:assemblePorterDebug
