@@ -15,16 +15,18 @@ public abstract class PorshService {
 
     private static final String TAG = "PorshService";
 
-    private static final boolean IS_ROOT = Os.getuid() == 0;
-
     private final PorshHostRegistry registry;
+    private final EnvPolicy envPolicy;
 
     public PorshService() {
-        this(new PorshHostRegistry(PorshHost::new, SystemClock::elapsedRealtime));
+        this(
+                new PorshHostRegistry(PorshHost::new, SystemClock::elapsedRealtime),
+                new EnvPolicy(Os.getuid() == 0));
     }
 
-    PorshService(PorshHostRegistry registry) {
+    PorshService(PorshHostRegistry registry, EnvPolicy envPolicy) {
         this.registry = registry;
+        this.envPolicy = envPolicy;
     }
 
     private void createHost(
@@ -34,27 +36,7 @@ public abstract class PorshService {
 
         int callingPid = Binder.getCallingPid();
 
-        // Termux app set PATH and LD_PRELOAD to Termux's internal path.
-        // Adb does not have sufficient permissions to access such places.
-
-        // Under adb, users need to set RISH_PRESERVE_ENV=1 to preserve env.
-        // Under root, keep env unless RISH_PRESERVE_ENV=0 is set.
-
-        boolean allowEnv = IS_ROOT;
-        for (String e : env) {
-            if ("RISH_PRESERVE_ENV=1".equals(e)) {
-                allowEnv = true;
-                break;
-            } else if ("RISH_PRESERVE_ENV=0".equals(e)) {
-                allowEnv = false;
-                break;
-            }
-        }
-        if (!allowEnv) {
-            env = null;
-        }
-
-        registry.createHost(callingPid, args, env, dir, tty, stdin, stdout, stderr);
+        registry.createHost(callingPid, args, envPolicy.resolve(env), dir, tty, stdin, stdout, stderr);
     }
 
     private void setWindowSize(long size) {
