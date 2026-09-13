@@ -21,6 +21,8 @@ public abstract class PorshService {
 
     private static final boolean IS_ROOT = Os.getuid() == 0;
 
+    private static final long EXIT_CODE_TIMEOUT_MILLIS = 5_000;
+
     private void createHost(
             String[] args, String[] env, String dir,
             byte tty,
@@ -76,7 +78,7 @@ public abstract class PorshService {
             return -1;
         }
 
-        return host.getExitCode();
+        return host.awaitExitCode(EXIT_CODE_TIMEOUT_MILLIS);
     }
 
     public abstract void enforceCallingPermission(String func);

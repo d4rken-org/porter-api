@@ -114,7 +114,7 @@ public class PorshTerminal {
         try {
             data.writeInterfaceToken(PorshConfig.getInterfaceToken());
             data.writeLong(size);
-            PorshConfig.getBinder().transact(PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_setWindowSize), data, null, 0);
+            PorshConfig.getBinder().transact(PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_setWindowSize), data, reply, 0);
             reply.readException();
         } finally {
             data.recycle();
@@ -130,7 +130,7 @@ public class PorshTerminal {
 
         try {
             data.writeInterfaceToken(PorshConfig.getInterfaceToken());
-            PorshConfig.getBinder().transact(PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_getExitCode), data, null, 0);
+            PorshConfig.getBinder().transact(PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_getExitCode), data, reply, 0);
             reply.readException();
             return reply.readInt();
         } finally {
