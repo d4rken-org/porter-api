@@ -13,25 +13,13 @@ import java.lang.reflect.Method;
 class FileDescriptors {
 
     private static Method getInt;
-    private static Method setInt;
 
     static {
         try {
             getInt = FileDescriptor.class.getDeclaredMethod("getInt$");
             getInt.setAccessible(true);
-            setInt = FileDescriptor.class.getDeclaredMethod("setInt$", int.class);
-            setInt.setAccessible(true);
         } catch (ReflectiveOperationException ignored) {
         }
-    }
-
-    public static FileDescriptor fromFd(int fd) {
-        FileDescriptor fileDescriptor = new FileDescriptor();
-        try {
-            setInt.invoke(fileDescriptor, fd);
-        } catch (IllegalAccessException | InvocationTargetException ignored) {
-        }
-        return fileDescriptor;
     }
 
     public static int getFd(FileDescriptor fileDescriptor) {
