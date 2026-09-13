@@ -3,6 +3,9 @@ package eu.darken.porter.porsh;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+
 public class PorshHost {
 
     private static final String TAG = "PorshHost";
@@ -58,9 +61,10 @@ public class PorshHost {
     private final int stdin;
     private final int stdout;
     private final int stderr;
+    private final CountDownLatch exited = new CountDownLatch(1);
     private int pid;
     private int ptmx;
-    private int exitCode = Integer.MAX_VALUE;
+    private volatile int exitCode = Integer.MAX_VALUE;
 
     public PorshHost(
             String[] args, String[] env, String dir,
@@ -96,14 +100,32 @@ public class PorshHost {
         pid = result[0];
         ptmx = result[1];
 
-        new Thread(() -> exitCode = waitFor(pid)).start();
+        new Thread(() -> onExited(waitFor(pid))).start();
     }
 
     public int getPid() {
         return pid;
     }
 
-    public int getExitCode() {
+    void onExited(int code) {
+        exitCode = code;
+        exited.countDown();
+    }
+
+    boolean hasExited() {
+        return exited.getCount() == 0;
+    }
+
+    int awaitExitCode(long timeoutMillis) {
+        try {
+            if (!exited.await(timeoutMillis, TimeUnit.MILLISECONDS)) {
+                Log.w(TAG, "Timed out waiting for " + pid + " to exit");
+                return -1;
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return -1;
+        }
         return exitCode;
     }
 
