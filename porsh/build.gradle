@@ -3,7 +3,7 @@ plugins {
 }
 
 android {
-    namespace = "rikka.rish"
+    namespace = "eu.darken.porter.porsh"
     defaultConfig {
         externalNativeBuild {
             cmake {
@@ -40,6 +40,6 @@ dependencies {
 
 ext {
     publishLibrary = false
-    POM_NAME = "RISH"
-    POM_DESCRIPTION = "RISH"
+    POM_NAME = "PORSH"
+    POM_DESCRIPTION = "PORSH"
 }

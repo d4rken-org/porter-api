@@ -1,4 +1,4 @@
-package rikka.rish;
+package eu.darken.porter.porsh;
 
 import android.annotation.SuppressLint;
 import android.system.ErrnoException;

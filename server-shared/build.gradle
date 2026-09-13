@@ -23,7 +23,7 @@ dependencies {
 
     api project(":aidl")
     api project(":shared")
-    api project(":rish")
+    api project(":porsh")
 
     implementation libs.refine.runtime
     implementation libs.hidden.compat

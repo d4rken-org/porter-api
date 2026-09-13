@@ -17,13 +17,13 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 
+import eu.darken.porter.porsh.PorshConfig;
+import eu.darken.porter.porsh.PorshService;
 import moe.shizuku.server.IRemoteProcess;
 import moe.shizuku.server.IShizukuApplication;
 import moe.shizuku.server.IShizukuService;
 import moe.shizuku.server.IShizukuServiceConnection;
 import rikka.hidden.compat.PermissionManagerApis;
-import rikka.rish.RishConfig;
-import rikka.rish.RishService;
 import rikka.shizuku.ShizukuApiConstants;
 import rikka.shizuku.server.api.RemoteProcessHolder;
 import rikka.shizuku.server.util.Logger;
@@ -38,17 +38,17 @@ public abstract class Service<
     private final UserServiceMgr userServiceManager;
     private final ConfigMgr configManager;
     private final ClientMgr clientManager;
-    private final RishService rishService;
+    private final PorshService porshService;
 
     protected static final Logger LOGGER = new Logger("Service");
 
     public Service() {
-        RishConfig.init(ShizukuApiConstants.BINDER_DESCRIPTOR, 30000);
+        PorshConfig.init(ShizukuApiConstants.BINDER_DESCRIPTOR, 30000);
 
         userServiceManager = onCreateUserServiceManager();
         configManager = onCreateConfigManager();
         clientManager = onCreateClientManager();
-        rishService = new RishService() {
+        porshService = new PorshService() {
 
             @Override
             public void enforceCallingPermission(String func) {
@@ -339,7 +339,7 @@ public abstract class Service<
             attachApplication(IShizukuApplication.Stub.asInterface(binder), args);
             reply.writeNoException();
             return true;
-        } else if (rishService.onTransact(code, data, reply, flags)) {
+        } else if (porshService.onTransact(code, data, reply, flags)) {
             return true;
         }
         return super.onTransact(code, data, reply, flags);

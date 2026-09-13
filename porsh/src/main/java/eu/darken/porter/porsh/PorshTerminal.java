@@ -1,4 +1,4 @@
-package rikka.rish;
+package eu.darken.porter.porsh;
 
 import android.os.Parcel;
 import android.os.RemoteException;
@@ -12,9 +12,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class RishTerminal {
+public class PorshTerminal {
 
-    private static final String TAG = "RishTerminal";
+    private static final String TAG = "PorshTerminal";
 
     public static int getFd(FileDescriptor[] fileDescriptor, int i) {
         if (fileDescriptor == null) {
@@ -38,7 +38,7 @@ public class RishTerminal {
     private int ttyFd = -1;
     private int exitCode;
 
-    public RishTerminal(String[] argv) throws ErrnoException, RemoteException {
+    public PorshTerminal(String[] argv) throws ErrnoException, RemoteException {
         this.argv = argv;
         this.tty = prepare();
 
@@ -59,20 +59,20 @@ public class RishTerminal {
         String dir = new File("").getAbsolutePath();
 
         try {
-            data.writeInterfaceToken(RishConfig.getInterfaceToken());
+            data.writeInterfaceToken(PorshConfig.getInterfaceToken());
             data.writeByte(tty);
             stdin = Os.pipe();
             data.writeFileDescriptor(stdin[0]);
             stdout = Os.pipe();
             data.writeFileDescriptor(stdout[1]);
-            if ((tty & RishConstants.ATTY_ERR) == 0) {
+            if ((tty & PorshConstants.ATTY_ERR) == 0) {
                 stderr = Os.pipe();
                 data.writeFileDescriptor(stderr[1]);
             }
             data.writeStringArray(argv);
             data.writeStringArray(env);
             data.writeString(dir);
-            RishConfig.getBinder().transact(RishConfig.getTransactionCode(RishConfig.TRANSACTION_createHost), data, reply, 0);
+            PorshConfig.getBinder().transact(PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_createHost), data, reply, 0);
             reply.readException();
         } finally {
             data.recycle();
@@ -112,9 +112,9 @@ public class RishTerminal {
         Parcel reply = Parcel.obtain();
 
         try {
-            data.writeInterfaceToken(RishConfig.getInterfaceToken());
+            data.writeInterfaceToken(PorshConfig.getInterfaceToken());
             data.writeLong(size);
-            RishConfig.getBinder().transact(RishConfig.getTransactionCode(RishConfig.TRANSACTION_setWindowSize), data, null, 0);
+            PorshConfig.getBinder().transact(PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_setWindowSize), data, null, 0);
             reply.readException();
         } finally {
             data.recycle();
@@ -129,8 +129,8 @@ public class RishTerminal {
         Parcel reply = Parcel.obtain();
 
         try {
-            data.writeInterfaceToken(RishConfig.getInterfaceToken());
-            RishConfig.getBinder().transact(RishConfig.getTransactionCode(RishConfig.TRANSACTION_getExitCode), data, null, 0);
+            data.writeInterfaceToken(PorshConfig.getInterfaceToken());
+            PorshConfig.getBinder().transact(PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_getExitCode), data, null, 0);
             reply.readException();
             return reply.readInt();
         } finally {
