@@ -46,6 +46,32 @@ jobs:
           cat "$RUNNER_TEMP/conflict.log"
           grep -q 'conflict on capability' "$RUNNER_TEMP/conflict.log"
 
+  shell:
+    name: Porsh shell
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 #v5.7.0
+        with:
+          distribution: temurin
+          # :porsh and :server-shared compile at source level 21.
+          java-version: '21'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 #v3.2.2
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c #v5.0.2
+      - name: Install Android SDK
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.0"
+      - name: Build and test the shell
+        run: ./gradlew -PincludeShell=true :porsh:assembleDebug :porsh:assembleRelease :porsh:testDebugUnitTest :server-shared:assembleRelease
+      - name: Upload unit test reports
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f #v6.0.0
+        with:
+          name: porsh-unit-tests
+          path: |
+            porsh/build/test-results/**/*.xml
+            porsh/build/reports/tests/**
+          if-no-files-found: warn
+
   wrapper:
     name: Gradle wrapper validation
     runs-on: ubuntu-latest
