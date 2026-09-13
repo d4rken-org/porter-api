@@ -150,7 +150,17 @@ public abstract class Service<
             targetFlags = flags;
         }
 
-        LOGGER.d("transact: uid=%d, descriptor=%s, code=%d", Binder.getCallingUid(), targetBinder.getInterfaceDescriptor(), targetCode);
+        if (Logger.debugEnabled()) {
+            // Best effort: a descriptor lookup that fails must not stop the caller's transaction
+            // from being forwarded, so diagnostics can never change what a client observes.
+            String descriptor;
+            try {
+                descriptor = targetBinder.getInterfaceDescriptor();
+            } catch (Throwable tr) {
+                descriptor = "<unavailable>";
+            }
+            LOGGER.d("transact: uid=%d, descriptor=%s, code=%d", Binder.getCallingUid(), descriptor, targetCode);
+        }
         Parcel newData = Parcel.obtain();
         try {
             newData.appendFrom(data, data.dataPosition(), data.dataAvail());
@@ -307,7 +317,10 @@ public abstract class Service<
     public final IRemoteProcess newProcess(String[] cmd, String[] env, String dir) {
         enforceCallingPermission("newProcess");
 
-        LOGGER.d("newProcess: uid=%d, cmd=%s, env=%s, dir=%s", Binder.getCallingUid(), Arrays.toString(cmd), Arrays.toString(env), dir);
+        if (Logger.debugEnabled()) {
+            LOGGER.d("newProcess: uid=%d, cmd=%s, env=%s, dir=%s", Binder.getCallingUid(),
+                    Arrays.toString(cmd), Arrays.toString(env), dir);
+        }
 
         java.lang.Process process;
         try {
