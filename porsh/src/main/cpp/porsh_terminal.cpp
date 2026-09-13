@@ -71,9 +71,10 @@ static jint PorshTerminal_start(
         PLOGE("pthread_mutex_lock");
     }
 
-    auto called = std::make_shared<std::atomic_bool>(false);
+    // One transfer per remote stream we have to drain before the process is done.
+    auto pending = std::make_shared<std::atomic_int>(err_tty ? 1 : 2);
     auto func = [=]() {
-        if (called->exchange(true)) {
+        if (pending->fetch_sub(1) != 1) {
             return;
         }
 
@@ -93,7 +94,7 @@ static jint PorshTerminal_start(
     transfer_async(STDIN_FILENO, stdin_pipe/*, func*/);
     transfer_async(stdout_pipe, STDOUT_FILENO, func);
     if (!err_tty) {
-        transfer_async(stderr_pipe, STDERR_FILENO/*, func*/);
+        transfer_async(stderr_pipe, STDERR_FILENO, func);
     }
 
     auto sigwinch_handler = [](int sig) {
