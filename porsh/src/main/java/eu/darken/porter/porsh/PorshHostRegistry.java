@@ -73,12 +73,13 @@ class PorshHostRegistry {
         }
 
         int exitCode = host.awaitExitCode(EXIT_CODE_TIMEOUT_MILLIS);
-        if (host.hasExited()) {
-            // Conditional: another transaction from the same pid may already have
-            // installed a newer host while this one was waiting.
-            hosts.remove(callingPid, host);
+        if (!host.hasExited()) {
+            return exitCode;
         }
-        return exitCode;
+        // Conditional: another transaction from the same pid may already have
+        // installed a newer host while this one was waiting.
+        hosts.remove(callingPid, host);
+        return host.getExitCode();
     }
 
     /**

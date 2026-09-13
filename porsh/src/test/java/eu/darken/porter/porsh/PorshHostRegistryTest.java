@@ -173,4 +173,29 @@ public class PorshHostRegistryTest {
         registry.setWindowSize(100, 42);
         assertEquals(42, host.windowSize);
     }
+
+    @Test
+    public void getExitCode_exitPublishedAfterTheWaitTimedOut_reportsItToTheSameCall() {
+        FakeHost host = new FakeHost(100) {
+            @Override
+            int awaitExitCode(long timeoutMillis) {
+                // The racing window: the timed wait has given up, and the host's exit is
+                // published before the registry gets to read hasExited().
+                onExited(7);
+                return -1;
+            }
+        };
+        PorshHostRegistry registry = new PorshHostRegistry(
+                (args, env, dir, tty, stdin, stdout, stderr) -> host,
+                now::get);
+        registry.createHost(100, new String[]{"100"}, null, null, (byte) 0, null, null, null);
+
+        assertEquals(
+                "the status published during the wait window was reported as a timeout",
+                7,
+                registry.getExitCode(100));
+
+        registry.setWindowSize(100, 42);
+        assertEquals("the collected host was left in the registry", -1, host.windowSize);
+    }
 }
