@@ -125,6 +125,11 @@ public class Shizuku {
     public static void onBinderReceived(@Nullable IBinder newBinder, String packageName) {
         if (binder == newBinder) return;
 
+        // A grant belongs to the connection that reported it. bindApplication sets it again for a
+        // new binder, so until then checkSelfPermission must not answer for the previous one.
+        permissionGranted = false;
+        shouldShowRequestPermissionRationale = false;
+
         if (newBinder == null) {
             binder = null;
             service = null;
