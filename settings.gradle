@@ -39,5 +39,5 @@ rootProject.name = "porter-api"
 include ":aidl", ":shared", ":api", ":provider", ":client"
 
 if (providers.gradleProperty("includeExtras").getOrElse("false").toBoolean()) {
-    include ":rish", ":server-shared", ":demo", ":demo-hidden-api-stub"
+    include ":porsh", ":server-shared", ":demo", ":demo-hidden-api-stub"
 }

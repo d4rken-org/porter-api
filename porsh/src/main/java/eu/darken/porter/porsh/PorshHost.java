@@ -1,11 +1,11 @@
-package rikka.rish;
+package eu.darken.porter.porsh;
 
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
-public class RishHost {
+public class PorshHost {
 
-    private static final String TAG = "RishHost";
+    private static final String TAG = "PorshHost";
 
     // libcore/ojluni/src/main/java/java/lang/ProcessImpl.java
 
@@ -62,7 +62,7 @@ public class RishHost {
     private int ptmx;
     private int exitCode = Integer.MAX_VALUE;
 
-    public RishHost(
+    public PorshHost(
             String[] args, String[] env, String dir,
             byte tty,
             ParcelFileDescriptor stdin, ParcelFileDescriptor stdout, ParcelFileDescriptor stderr) {

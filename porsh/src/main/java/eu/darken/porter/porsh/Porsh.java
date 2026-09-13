@@ -1,12 +1,12 @@
-package rikka.rish;
+package eu.darken.porter.porsh;
 
 import android.util.Log;
 
 import java.util.Arrays;
 
-public class Rish {
+public class Porsh {
 
-    private static final String TAG = "RISH";
+    private static final String TAG = "PORSH";
 
     public void requestPermission(Runnable onGrantedRunnable) {
 
@@ -23,7 +23,7 @@ public class Rish {
 
     private void startShell(String[] args) {
         try {
-            RishTerminal terminal = new RishTerminal(args);
+            PorshTerminal terminal = new PorshTerminal(args);
             terminal.start();
             int exitCode = terminal.waitFor();
             System.exit(exitCode);

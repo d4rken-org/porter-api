@@ -1,4 +1,4 @@
-package rikka.rish;
+package eu.darken.porter.porsh;
 
 import android.os.Binder;
 import android.os.IBinder;
@@ -13,11 +13,11 @@ import androidx.annotation.Nullable;
 import java.util.HashMap;
 import java.util.Map;
 
-public abstract class RishService {
+public abstract class PorshService {
 
-    private static final String TAG = "RishService";
+    private static final String TAG = "PorshService";
 
-    private static final Map<Integer, RishHost> HOSTS = new HashMap<>();
+    private static final Map<Integer, PorshHost> HOSTS = new HashMap<>();
 
     private static final boolean IS_ROOT = Os.getuid() == 0;
 
@@ -48,7 +48,7 @@ public abstract class RishService {
             env = null;
         }
 
-        RishHost host = new RishHost(args, env, dir, tty, stdin, stdout, stderr);
+        PorshHost host = new PorshHost(args, env, dir, tty, stdin, stdout, stderr);
         host.start();
         Log.d(TAG, "Forked " + host.getPid());
 
@@ -58,7 +58,7 @@ public abstract class RishService {
     private void setWindowSize(long size) {
         int callingPid = Binder.getCallingPid();
 
-        RishHost host = HOSTS.get(callingPid);
+        PorshHost host = HOSTS.get(callingPid);
         if (host == null) {
             Log.d(TAG, "Not existing host created by " + callingPid);
             return;
@@ -70,7 +70,7 @@ public abstract class RishService {
     private int getExitCode() {
         int callingPid = Binder.getCallingPid();
 
-        RishHost host = HOSTS.get(callingPid);
+        PorshHost host = HOSTS.get(callingPid);
         if (host == null) {
             Log.d(TAG, "Not existing host created by " + callingPid);
             return -1;
@@ -82,7 +82,7 @@ public abstract class RishService {
     public abstract void enforceCallingPermission(String func);
 
     public boolean onTransact(int code, @NonNull Parcel data, @Nullable Parcel reply, int flags) {
-        if (code == RishConfig.getTransactionCode(RishConfig.TRANSACTION_createHost)) {
+        if (code == PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_createHost)) {
             Log.d(TAG, "TRANSACTION_createHost");
 
             enforceCallingPermission("createHost");
@@ -95,11 +95,11 @@ public abstract class RishService {
             ParcelFileDescriptor stdout;
             ParcelFileDescriptor stderr = null;
 
-            data.enforceInterface(RishConfig.getInterfaceToken());
+            data.enforceInterface(PorshConfig.getInterfaceToken());
             byte tty = data.readByte();
             stdin = data.readFileDescriptor();
             stdout = data.readFileDescriptor();
-            if ((tty & RishConstants.ATTY_ERR) == 0) {
+            if ((tty & PorshConstants.ATTY_ERR) == 0) {
                 stderr = data.readFileDescriptor();
             }
             String[] args = data.createStringArray();
@@ -108,24 +108,24 @@ public abstract class RishService {
             createHost(args, env, dir, tty, stdin, stdout, stderr);
             reply.writeNoException();
             return true;
-        } else if (code == RishConfig.getTransactionCode(RishConfig.TRANSACTION_setWindowSize)) {
+        } else if (code == PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_setWindowSize)) {
             Log.d(TAG, "TRANSACTION_setWindowSize");
 
             enforceCallingPermission("setWindowSize");
 
-            data.enforceInterface(RishConfig.getInterfaceToken());
+            data.enforceInterface(PorshConfig.getInterfaceToken());
             long size = data.readLong();
             setWindowSize(size);
             if (reply != null) {
                 reply.writeNoException();
             }
             return true;
-        } else if (code == RishConfig.getTransactionCode(RishConfig.TRANSACTION_getExitCode)) {
+        } else if (code == PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_getExitCode)) {
             Log.d(TAG, "TRANSACTION_getExitCode");
 
             enforceCallingPermission("getExitCode");
 
-            data.enforceInterface(RishConfig.getInterfaceToken());
+            data.enforceInterface(PorshConfig.getInterfaceToken());
             int exitCode = getExitCode();
             if (reply != null) {
                 reply.writeNoException();

@@ -1,12 +1,12 @@
-package rikka.rish;
+package eu.darken.porter.porsh;
 
 import android.annotation.SuppressLint;
 import android.os.IBinder;
 import android.util.Log;
 
-public class RishConfig {
+public class PorshConfig {
 
-    private static final String TAG = "RISHConfig";
+    private static final String TAG = "PORSHConfig";
 
     static final int TRANSACTION_createHost = 0;
     static final int TRANSACTION_setWindowSize = 1;
@@ -36,24 +36,24 @@ public class RishConfig {
     @SuppressLint("UnsafeDynamicallyLoadedCode")
     private static void loadLibrary() {
         if (libraryPath == null) {
-            System.loadLibrary("rish");
+            System.loadLibrary("porsh");
         } else {
-            System.load(libraryPath + "/librish.so");
+            System.load(libraryPath + "/libporsh.so");
         }
     }
 
     public static void init(String interfaceToken, int transactionCodeStart) {
         Log.d(TAG, "init (server) " + interfaceToken + " " + transactionCodeStart);
-        RishConfig.interfaceToken = interfaceToken;
-        RishConfig.transactionCodeStart = transactionCodeStart;
+        PorshConfig.interfaceToken = interfaceToken;
+        PorshConfig.transactionCodeStart = transactionCodeStart;
         loadLibrary();
     }
 
     public static void init(IBinder binder, String interfaceToken, int transactionCodeStart) {
         Log.d(TAG, "init (client) " + binder + " " + interfaceToken + " " + transactionCodeStart);
-        RishConfig.binder = binder;
-        RishConfig.interfaceToken = interfaceToken;
-        RishConfig.transactionCodeStart = transactionCodeStart;
+        PorshConfig.binder = binder;
+        PorshConfig.interfaceToken = interfaceToken;
+        PorshConfig.transactionCodeStart = transactionCodeStart;
         loadLibrary();
     }
 }

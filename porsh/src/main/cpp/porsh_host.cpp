@@ -55,7 +55,7 @@ static void initVectorFromBlock(const char **vector, const char *block, int coun
     vector[count] = nullptr;
 }
 
-static jintArray RishHost_startHost(
+static jintArray PorshHost_startHost(
         JNIEnv *env, jclass clazz,
         jbyteArray argBlock, jint argc,
         jbyteArray envBlock, jint envc,
@@ -246,11 +246,11 @@ static jintArray RishHost_startHost(
     }
 }
 
-static void RishHost_setWindowSize(JNIEnv *env, jclass clazz, jint ptmx, jlong size) {
+static void PorshHost_setWindowSize(JNIEnv *env, jclass clazz, jint ptmx, jlong size) {
     setWindowSize(ptmx, size);
 }
 
-static jint RishHost_waitFor(JNIEnv *env, jclass clazz, jint pid) {
+static jint PorshHost_waitFor(JNIEnv *env, jclass clazz, jint pid) {
     if (pid < 0)
         return -1;
 
@@ -278,12 +278,12 @@ static jint RishHost_waitFor(JNIEnv *env, jclass clazz, jint pid) {
     return -1;
 }
 
-int rikka_rish_RishHost_registerNatives(JNIEnv *env) {
-    auto clazz = env->FindClass("rikka/rish/RishHost");
+int porsh_host_registerNatives(JNIEnv *env) {
+    auto clazz = env->FindClass("eu/darken/porter/porsh/PorshHost");
     JNINativeMethod methods[] = {
-            {"start",         "([BI[BI[BBIII)[I", (void *) RishHost_startHost},
-            {"setWindowSize", "(IJ)V",            (void *) RishHost_setWindowSize},
-            {"waitFor",       "(I)I",             (void *) RishHost_waitFor},
+            {"start",         "([BI[BI[BBIII)[I", (void *) PorshHost_startHost},
+            {"setWindowSize", "(IJ)V",            (void *) PorshHost_setWindowSize},
+            {"waitFor",       "(I)I",             (void *) PorshHost_waitFor},
     };
     return env->RegisterNatives(clazz, methods, sizeof(methods) / sizeof(methods[0]));
 }
