@@ -13,7 +13,9 @@ import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_VERSION_CODE;
 import android.annotation.SuppressLint;
 import android.content.ComponentName;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.text.format.DateUtils;
@@ -51,7 +53,7 @@ public abstract class UserServiceManager {
 
     public PackageInfo ensureCallingPackageForUserService(String packageName, int appId, int userId) {
         @SuppressLint("UnsafeOptInUsageError")
-        PackageInfo packageInfo = PackageManagerApis.getPackageInfoNoThrow(packageName, 0x00002000 /*PackageManager.MATCH_UNINSTALLED_PACKAGES*/, userId);
+        PackageInfo packageInfo = PackageManagerApis.getPackageInfoNoThrow(packageName, userServiceLookupFlags(), userId);
         if (packageInfo == null || packageInfo.applicationInfo == null) {
             throw new SecurityException("unable to find package " + packageName);
         }
@@ -60,6 +62,19 @@ public abstract class UserServiceManager {
             throw new SecurityException("package " + packageName + " is not owned by " + appId);
         }
         return packageInfo;
+    }
+
+    /**
+     * The signing flags ride along with the authorising lookup so that whoever records or compares a
+     * binder's identity never needs a second call to the package manager under the monitor.
+     */
+    @SuppressWarnings("deprecation")
+    private static long userServiceLookupFlags() {
+        long flags = 0x00002000 /*PackageManager.MATCH_UNINSTALLED_PACKAGES*/;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            return flags | PackageManager.GET_SIGNING_CERTIFICATES;
+        }
+        return flags | PackageManager.GET_SIGNATURES;
     }
 
     public int removeUserService(IShizukuServiceConnection conn, Bundle options) {
@@ -145,6 +160,14 @@ public abstract class UserServiceManager {
 
         synchronized (this) {
             UserServiceRecord record = getUserServiceRecordLocked(key);
+            // Before the branch: noCreate hands back the existing binder without ever reaching
+            // createUserServiceRecordIfNeededLocked, so a check placed there would miss it. Package
+            // name ownership alone is satisfied by whoever installed over the name last.
+            if (record != null && !canReuseUserServiceRecord(record, packageInfo)) {
+                LOGGER.w("Service record %s (%s) does not belong to the current installation of %s", key, record.token, packageName);
+                removeUserServiceLocked(record);
+                record = null;
+            }
             if (noCreate) {
                 if (record != null) {
                     record.callbacks.register(conn);
@@ -181,6 +204,15 @@ public abstract class UserServiceManager {
                 return 0;
             }
         }
+    }
+
+    /**
+     * Whether {@code record} may still be handed to a caller whose installation is described by
+     * {@code packageInfo}. Called with the monitor held, before either hand-over path. The default
+     * accepts every record; an implementation that records an identity compares it here.
+     */
+    public boolean canReuseUserServiceRecord(UserServiceRecord record, PackageInfo packageInfo) {
+        return true;
     }
 
     private UserServiceRecord getUserServiceRecordLocked(String key) {
@@ -236,11 +268,22 @@ public abstract class UserServiceManager {
             UserServiceRecord record, String key, String token, String packageName,
             String classname, String processNameSuffix, int callingUid, boolean use32Bits, boolean debug) {
 
+        // The task waited on the start executor; whoever removed the record in the meantime wanted
+        // the service gone, not started. A removal landing after the second guard still spawns.
+        if (record.isRemoved()) {
+            LOGGER.v("Service record %s (%s) was removed before it could start", key, token);
+            return;
+        }
+
         LOGGER.v("Starting process for service record %s (%s)...", key, token);
 
         String cmd = getUserServiceStartCmd(record, key, token, packageName, classname, processNameSuffix, callingUid, use32Bits && AbiUtil.has32Bit(), debug);
         int exitCode;
         try {
+            if (record.isRemoved()) {
+                LOGGER.v("Service record %s (%s) was removed before it could start", key, token);
+                return;
+            }
             java.lang.Process process = Runtime.getRuntime().exec("sh");
             OutputStream os = process.getOutputStream();
             os.write(cmd.getBytes());
@@ -309,6 +352,19 @@ public abstract class UserServiceManager {
             LOGGER.w(tr, "getInterfaceDescriptor");
             return null;
         }
+    }
+
+    /** Whether a live, non-removed record carries {@code token}. */
+    public boolean isUserServiceTokenLive(String token) {
+        if (token == null) return false;
+        synchronized (this) {
+            for (UserServiceRecord record : userServiceRecords.values()) {
+                if (token.equals(record.token)) {
+                    return !record.isRemoved();
+                }
+            }
+        }
+        return false;
     }
 
     public void onUserServiceRecordCreated(UserServiceRecord record, PackageInfo packageInfo) {
