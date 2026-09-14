@@ -22,6 +22,7 @@ import android.util.ArrayMap;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,6 +41,8 @@ public abstract class UserServiceManager {
     protected static final Logger LOGGER = new Logger("UserServiceManager");
 
     private final Executor executor = Executors.newSingleThreadExecutor();
+    /** Separate from {@link #executor} so a cleanup cannot delay a service start. */
+    private final Executor cleanupExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, UserServiceRecord> userServiceRecords = Collections.synchronizedMap(new ArrayMap<>());
     private final Map<String, List<UserServiceRecord>> packageUserServiceRecords = Collections.synchronizedMap(new ArrayMap<>());
 
@@ -91,11 +94,29 @@ public abstract class UserServiceManager {
         return 0;
     }
 
-    private void removeUserServiceLocked(UserServiceRecord record) {
-        if (userServiceRecords.values().remove(record)) {
-            record.destroy();
-            onUserServiceRecordRemoved(record);
+    /**
+     * Detaches {@code record} from both indexes. Returns null when it was already detached, so a
+     * second removal - binder death racing a start timeout, say - is a no-op rather than a second
+     * {@code destroy}.
+     */
+    private UserServiceRecord detachUserServiceLocked(UserServiceRecord record) {
+        boolean removed = userServiceRecords.values().remove(record);
+        for (Iterator<Map.Entry<String, List<UserServiceRecord>>> it =
+                     packageUserServiceRecords.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<String, List<UserServiceRecord>> entry = it.next();
+            entry.getValue().remove(record);
+            if (entry.getValue().isEmpty()) it.remove();
         }
+        if (!removed) return null;
+        record.markRemoved();
+        onUserServiceRecordRemoved(record);
+        return record;
+    }
+
+    private void removeUserServiceLocked(UserServiceRecord record) {
+        UserServiceRecord detached = detachUserServiceLocked(record);
+        // destroy() talks to the remote; off the monitor, so a wedged daemon cannot block every bind.
+        if (detached != null) cleanupExecutor.execute(detached::destroy);
     }
 
     public int addUserService(IShizukuServiceConnection conn, Bundle options, int callingApiVersion) {
@@ -239,7 +260,7 @@ public abstract class UserServiceManager {
             UserServiceRecord record, String key, String token, String packageName,
             String classname, String processNameSuffix, int callingUid, boolean use32Bits, boolean debug);
 
-    private void sendUserServiceLocked(IBinder binder, String token) {
+    private void sendUserServiceLocked(IBinder binder, String token, String interfaceDescriptor) {
         Map.Entry<String, UserServiceRecord> entry = null;
         for (Map.Entry<String, UserServiceRecord> e : userServiceRecords.entrySet()) {
             if (e.getValue().token.equals(token)) {
@@ -252,18 +273,41 @@ public abstract class UserServiceManager {
             throw new IllegalArgumentException("unable to find token " + token);
         }
 
+        UserServiceRecord record = entry.getValue();
+        if (record.isRemoved()) {
+            throw new IllegalArgumentException("service record for token " + token + " is removed");
+        }
+
         LOGGER.v("Received binder for service record %s", token);
 
-        UserServiceRecord record = entry.getValue();
-        record.setBinder(binder);
+        record.setBinder(binder, interfaceDescriptor);
     }
 
     public void attachUserService(IBinder binder, Bundle options) {
         Objects.requireNonNull(binder, "binder is null");
+        attachUserService(binder, options, getInterfaceDescriptor(binder));
+    }
+
+    public void attachUserService(IBinder binder, Bundle options, String interfaceDescriptor) {
+        Objects.requireNonNull(binder, "binder is null");
         String token = Objects.requireNonNull(options.getString(ShizukuApiConstants.USER_SERVICE_ARG_TOKEN), "token is null");
 
         synchronized (this) {
-            sendUserServiceLocked(binder, token);
+            sendUserServiceLocked(binder, token, interfaceDescriptor);
+        }
+    }
+
+    /**
+     * Must be called with no monitor held: this is a synchronous binder round trip, and Binder has
+     * no client-side timeout.
+     */
+    public static String getInterfaceDescriptor(IBinder binder) {
+        if (binder == null) return null;
+        try {
+            return binder.getInterfaceDescriptor();
+        } catch (Throwable tr) {
+            LOGGER.w(tr, "getInterfaceDescriptor");
+            return null;
         }
     }
 
@@ -276,13 +320,16 @@ public abstract class UserServiceManager {
     }
 
     public void removeUserServicesForPackage(String packageName) {
-        List<UserServiceRecord> list = packageUserServiceRecords.get(packageName);
-        if (list != null) {
-            for (UserServiceRecord record : list) {
-                record.removeSelf();
-                LOGGER.i("Remove user service %s for package %s", record.token, packageName);
-            }
-            packageUserServiceRecords.remove(packageName);
+        List<UserServiceRecord> snapshot;
+        synchronized (this) {
+            List<UserServiceRecord> list = packageUserServiceRecords.get(packageName);
+            if (list == null) return;
+            // removeSelf() prunes this very list, so iterating it directly invalidates the iterator.
+            snapshot = new ArrayList<>(list);
+        }
+        for (UserServiceRecord record : snapshot) {
+            record.removeSelf();
+            LOGGER.i("Remove user service %s for package %s", record.token, packageName);
         }
     }
 
