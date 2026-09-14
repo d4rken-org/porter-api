@@ -38,7 +38,18 @@ public abstract class UserServiceRecord {
     public IBinder service;
     public final RemoteCallbackList<IShizukuServiceConnection> callbacks = new ConnectionList();
     public boolean daemon;
-    public boolean starting;
+    /**
+     * Written under the manager monitor, read from the start executor and the main handler, neither
+     * of which holds it.
+     */
+    public volatile boolean starting;
+    private volatile boolean removed;
+    /**
+     * Acquired once, with no monitor held, by whoever publishes the binder. {@link #destroy()} needs
+     * it and cannot ask the remote for it: that is a synchronous round trip a wedged service never
+     * answers.
+     */
+    private volatile String interfaceDescriptor;
 
     public UserServiceRecord(int versionCode, boolean daemon) {
         this.versionCode = versionCode;
@@ -60,7 +71,7 @@ public abstract class UserServiceRecord {
 
         starting = true;
         startTimeoutCallback = () -> {
-            if (starting) {
+            if (!removed && starting) {
                 LOGGER.w("Service record %s is not started in %d ms", token, timeoutMillis);
                 removeSelf();
             }
@@ -68,16 +79,33 @@ public abstract class UserServiceRecord {
         HandlerUtil.getMainHandler().postDelayed(startTimeoutCallback, timeoutMillis);
     }
 
+    /**
+     * Marks the record detached from every index. A record only ever goes from live to removed, so
+     * the callers that consult {@link #isRemoved()} without the monitor cannot miss a later revival.
+     */
+    public void markRemoved() {
+        removed = true;
+        starting = false;
+        if (startTimeoutCallback != null) {
+            HandlerUtil.getMainHandler().removeCallbacks(startTimeoutCallback);
+        }
+    }
+
+    public boolean isRemoved() {
+        return removed;
+    }
+
     public void setDaemon(boolean daemon) {
         this.daemon = daemon;
     }
 
-    public void setBinder(IBinder binder) {
+    public void setBinder(IBinder binder, String interfaceDescriptor) {
         LOGGER.v("Binder received for service record %s", token);
 
         HandlerUtil.getMainHandler().removeCallbacks(startTimeoutCallback);
 
         service = binder;
+        this.interfaceDescriptor = interfaceDescriptor;
 
         try {
             binder.linkToDeath(deathRecipient, 0);
@@ -119,24 +147,35 @@ public abstract class UserServiceRecord {
     public abstract void removeSelf();
 
     public void destroy() {
-        if (service != null) {
-            service.unlinkToDeath(deathRecipient, 0);
-        }
-
-        if (service != null && service.pingBinder()) {
-            Parcel data = Parcel.obtain();
-            Parcel reply = Parcel.obtain();
-            try {
-                data.writeInterfaceToken(service.getInterfaceDescriptor());
-                service.transact(USER_SERVICE_TRANSACTION_destroy, data, reply, Binder.FLAG_ONEWAY);
-            } catch (Throwable e) {
-                LOGGER.w("Failed to call destroy %s", token);
-            } finally {
-                data.recycle();
-                reply.recycle();
+        try {
+            if (service != null) {
+                try {
+                    service.unlinkToDeath(deathRecipient, 0);
+                } catch (Throwable tr) {
+                    LOGGER.w("unlinkToDeath %s", token);
+                }
             }
-        }
 
-        callbacks.kill();
+            // A record removed by start timeout never received a binder, so both guards stay.
+            if (service != null && interfaceDescriptor != null) {
+                Parcel data = Parcel.obtain();
+                Parcel reply = Parcel.obtain();
+                try {
+                    data.writeInterfaceToken(interfaceDescriptor);
+                    service.transact(USER_SERVICE_TRANSACTION_destroy, data, reply, Binder.FLAG_ONEWAY);
+                } catch (Throwable e) {
+                    LOGGER.w("Failed to call destroy %s", token);
+                } finally {
+                    data.recycle();
+                    reply.recycle();
+                }
+            } else if (service != null) {
+                // Parcel.writeInterfaceToken(null) reaches a JNI null check that aborts the process,
+                // which no catch here would see.
+                LOGGER.w("No interface descriptor for service record %s, cannot request destroy", token);
+            }
+        } finally {
+            callbacks.kill();
+        }
     }
 }

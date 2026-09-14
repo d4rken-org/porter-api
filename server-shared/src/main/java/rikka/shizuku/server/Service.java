@@ -257,6 +257,14 @@ public abstract class Service<
         userServiceManager.attachUserService(binder, options);
     }
 
+    /**
+     * For an override that has to acquire the interface descriptor before it takes its own monitor.
+     * See {@link UserServiceManager#getInterfaceDescriptor(IBinder)}.
+     */
+    public void attachUserService(IBinder binder, Bundle options, String interfaceDescriptor) {
+        userServiceManager.attachUserService(binder, options, interfaceDescriptor);
+    }
+
     @Override
     public final boolean checkSelfPermission() {
         int callingUid = Binder.getCallingUid();

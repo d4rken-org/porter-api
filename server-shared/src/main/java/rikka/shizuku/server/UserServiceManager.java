@@ -13,7 +13,9 @@ import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_VERSION_CODE;
 import android.annotation.SuppressLint;
 import android.content.ComponentName;
 import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.os.Binder;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.text.format.DateUtils;
@@ -22,6 +24,7 @@ import android.util.ArrayMap;
 import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -40,6 +43,8 @@ public abstract class UserServiceManager {
     protected static final Logger LOGGER = new Logger("UserServiceManager");
 
     private final Executor executor = Executors.newSingleThreadExecutor();
+    /** Separate from {@link #executor} so a cleanup cannot delay a service start. */
+    private final Executor cleanupExecutor = Executors.newSingleThreadExecutor();
     private final Map<String, UserServiceRecord> userServiceRecords = Collections.synchronizedMap(new ArrayMap<>());
     private final Map<String, List<UserServiceRecord>> packageUserServiceRecords = Collections.synchronizedMap(new ArrayMap<>());
 
@@ -48,7 +53,7 @@ public abstract class UserServiceManager {
 
     public PackageInfo ensureCallingPackageForUserService(String packageName, int appId, int userId) {
         @SuppressLint("UnsafeOptInUsageError")
-        PackageInfo packageInfo = PackageManagerApis.getPackageInfoNoThrow(packageName, 0x00002000 /*PackageManager.MATCH_UNINSTALLED_PACKAGES*/, userId);
+        PackageInfo packageInfo = PackageManagerApis.getPackageInfoNoThrow(packageName, userServiceLookupFlags(), userId);
         if (packageInfo == null || packageInfo.applicationInfo == null) {
             throw new SecurityException("unable to find package " + packageName);
         }
@@ -57,6 +62,19 @@ public abstract class UserServiceManager {
             throw new SecurityException("package " + packageName + " is not owned by " + appId);
         }
         return packageInfo;
+    }
+
+    /**
+     * The signing flags ride along with the authorising lookup so that whoever records or compares a
+     * binder's identity never needs a second call to the package manager under the monitor.
+     */
+    @SuppressWarnings("deprecation")
+    private static long userServiceLookupFlags() {
+        long flags = 0x00002000 /*PackageManager.MATCH_UNINSTALLED_PACKAGES*/;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            return flags | PackageManager.GET_SIGNING_CERTIFICATES;
+        }
+        return flags | PackageManager.GET_SIGNATURES;
     }
 
     public int removeUserService(IShizukuServiceConnection conn, Bundle options) {
@@ -91,11 +109,29 @@ public abstract class UserServiceManager {
         return 0;
     }
 
-    private void removeUserServiceLocked(UserServiceRecord record) {
-        if (userServiceRecords.values().remove(record)) {
-            record.destroy();
-            onUserServiceRecordRemoved(record);
+    /**
+     * Detaches {@code record} from both indexes. Returns null when it was already detached, so a
+     * second removal - binder death racing a start timeout, say - is a no-op rather than a second
+     * {@code destroy}.
+     */
+    private UserServiceRecord detachUserServiceLocked(UserServiceRecord record) {
+        boolean removed = userServiceRecords.values().remove(record);
+        for (Iterator<Map.Entry<String, List<UserServiceRecord>>> it =
+                     packageUserServiceRecords.entrySet().iterator(); it.hasNext(); ) {
+            Map.Entry<String, List<UserServiceRecord>> entry = it.next();
+            entry.getValue().remove(record);
+            if (entry.getValue().isEmpty()) it.remove();
         }
+        if (!removed) return null;
+        record.markRemoved();
+        onUserServiceRecordRemoved(record);
+        return record;
+    }
+
+    private void removeUserServiceLocked(UserServiceRecord record) {
+        UserServiceRecord detached = detachUserServiceLocked(record);
+        // destroy() talks to the remote; off the monitor, so a wedged daemon cannot block every bind.
+        if (detached != null) cleanupExecutor.execute(detached::destroy);
     }
 
     public int addUserService(IShizukuServiceConnection conn, Bundle options, int callingApiVersion) {
@@ -124,6 +160,14 @@ public abstract class UserServiceManager {
 
         synchronized (this) {
             UserServiceRecord record = getUserServiceRecordLocked(key);
+            // Before the branch: noCreate hands back the existing binder without ever reaching
+            // createUserServiceRecordIfNeededLocked, so a check placed there would miss it. Package
+            // name ownership alone is satisfied by whoever installed over the name last.
+            if (record != null && !canReuseUserServiceRecord(record, packageInfo)) {
+                LOGGER.w("Service record %s (%s) does not belong to the current installation of %s", key, record.token, packageName);
+                removeUserServiceLocked(record);
+                record = null;
+            }
             if (noCreate) {
                 if (record != null) {
                     record.callbacks.register(conn);
@@ -160,6 +204,15 @@ public abstract class UserServiceManager {
                 return 0;
             }
         }
+    }
+
+    /**
+     * Whether {@code record} may still be handed to a caller whose installation is described by
+     * {@code packageInfo}. Called with the monitor held, before either hand-over path. The default
+     * accepts every record; an implementation that records an identity compares it here.
+     */
+    public boolean canReuseUserServiceRecord(UserServiceRecord record, PackageInfo packageInfo) {
+        return true;
     }
 
     private UserServiceRecord getUserServiceRecordLocked(String key) {
@@ -215,11 +268,22 @@ public abstract class UserServiceManager {
             UserServiceRecord record, String key, String token, String packageName,
             String classname, String processNameSuffix, int callingUid, boolean use32Bits, boolean debug) {
 
+        // The task waited on the start executor; whoever removed the record in the meantime wanted
+        // the service gone, not started. A removal landing after the second guard still spawns.
+        if (record.isRemoved()) {
+            LOGGER.v("Service record %s (%s) was removed before it could start", key, token);
+            return;
+        }
+
         LOGGER.v("Starting process for service record %s (%s)...", key, token);
 
         String cmd = getUserServiceStartCmd(record, key, token, packageName, classname, processNameSuffix, callingUid, use32Bits && AbiUtil.has32Bit(), debug);
         int exitCode;
         try {
+            if (record.isRemoved()) {
+                LOGGER.v("Service record %s (%s) was removed before it could start", key, token);
+                return;
+            }
             java.lang.Process process = Runtime.getRuntime().exec("sh");
             OutputStream os = process.getOutputStream();
             os.write(cmd.getBytes());
@@ -239,7 +303,7 @@ public abstract class UserServiceManager {
             UserServiceRecord record, String key, String token, String packageName,
             String classname, String processNameSuffix, int callingUid, boolean use32Bits, boolean debug);
 
-    private void sendUserServiceLocked(IBinder binder, String token) {
+    private void sendUserServiceLocked(IBinder binder, String token, String interfaceDescriptor) {
         Map.Entry<String, UserServiceRecord> entry = null;
         for (Map.Entry<String, UserServiceRecord> e : userServiceRecords.entrySet()) {
             if (e.getValue().token.equals(token)) {
@@ -252,19 +316,55 @@ public abstract class UserServiceManager {
             throw new IllegalArgumentException("unable to find token " + token);
         }
 
+        UserServiceRecord record = entry.getValue();
+        if (record.isRemoved()) {
+            throw new IllegalArgumentException("service record for token " + token + " is removed");
+        }
+
         LOGGER.v("Received binder for service record %s", token);
 
-        UserServiceRecord record = entry.getValue();
-        record.setBinder(binder);
+        record.setBinder(binder, interfaceDescriptor);
     }
 
     public void attachUserService(IBinder binder, Bundle options) {
         Objects.requireNonNull(binder, "binder is null");
+        attachUserService(binder, options, getInterfaceDescriptor(binder));
+    }
+
+    public void attachUserService(IBinder binder, Bundle options, String interfaceDescriptor) {
+        Objects.requireNonNull(binder, "binder is null");
         String token = Objects.requireNonNull(options.getString(ShizukuApiConstants.USER_SERVICE_ARG_TOKEN), "token is null");
 
         synchronized (this) {
-            sendUserServiceLocked(binder, token);
+            sendUserServiceLocked(binder, token, interfaceDescriptor);
         }
+    }
+
+    /**
+     * Must be called with no monitor held: this is a synchronous binder round trip, and Binder has
+     * no client-side timeout.
+     */
+    public static String getInterfaceDescriptor(IBinder binder) {
+        if (binder == null) return null;
+        try {
+            return binder.getInterfaceDescriptor();
+        } catch (Throwable tr) {
+            LOGGER.w(tr, "getInterfaceDescriptor");
+            return null;
+        }
+    }
+
+    /** Whether a live, non-removed record carries {@code token}. */
+    public boolean isUserServiceTokenLive(String token) {
+        if (token == null) return false;
+        synchronized (this) {
+            for (UserServiceRecord record : userServiceRecords.values()) {
+                if (token.equals(record.token)) {
+                    return !record.isRemoved();
+                }
+            }
+        }
+        return false;
     }
 
     public void onUserServiceRecordCreated(UserServiceRecord record, PackageInfo packageInfo) {
@@ -276,13 +376,16 @@ public abstract class UserServiceManager {
     }
 
     public void removeUserServicesForPackage(String packageName) {
-        List<UserServiceRecord> list = packageUserServiceRecords.get(packageName);
-        if (list != null) {
-            for (UserServiceRecord record : list) {
-                record.removeSelf();
-                LOGGER.i("Remove user service %s for package %s", record.token, packageName);
-            }
-            packageUserServiceRecords.remove(packageName);
+        List<UserServiceRecord> snapshot;
+        synchronized (this) {
+            List<UserServiceRecord> list = packageUserServiceRecords.get(packageName);
+            if (list == null) return;
+            // removeSelf() prunes this very list, so iterating it directly invalidates the iterator.
+            snapshot = new ArrayList<>(list);
+        }
+        for (UserServiceRecord record : snapshot) {
+            record.removeSelf();
+            LOGGER.i("Remove user service %s for package %s", record.token, packageName);
         }
     }
 
