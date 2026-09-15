@@ -16,6 +16,7 @@ import androidx.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Objects;
 
 import eu.darken.porter.core.CallerIdentity;
 import eu.darken.porter.core.ServerProcess;
@@ -28,9 +29,10 @@ import moe.shizuku.server.IShizukuServiceConnection;
 import rikka.hidden.compat.PermissionManagerApis;
 import rikka.shizuku.ShizukuApiConstants;
 import rikka.shizuku.server.api.RemoteProcessHolder;
+import rikka.shizuku.server.legacy.LegacyServiceConnection;
+import rikka.shizuku.server.legacy.LegacyUserServiceOptions;
 import rikka.shizuku.server.util.Logger;
 import rikka.shizuku.server.util.OsUtils;
-import rikka.shizuku.server.util.UserHandleCompat;
 
 public abstract class Service<
         UserServiceMgr extends UserServiceManager,
@@ -138,13 +140,13 @@ public abstract class Service<
     public final void transactRemote(Parcel data, Parcel reply, int flags) throws RemoteException {
         enforceCallingPermission("transactRemote");
 
+        CallerIdentity caller = CallerIdentity.fromBinder();
+
         IBinder targetBinder = data.readStrongBinder();
         int targetCode = data.readInt();
         int targetFlags;
 
-        int callingUid = Binder.getCallingUid();
-        int callingPid = Binder.getCallingPid();
-        ClientRecord clientRecord = clientManager.findClient(callingUid, callingPid);
+        ClientRecord clientRecord = clientManager.findClient(caller.uid, caller.pid);
 
         if (clientRecord != null && clientRecord.apiVersion >= 13) {
             targetFlags = data.readInt();
@@ -161,7 +163,7 @@ public abstract class Service<
             } catch (Throwable tr) {
                 descriptor = "<unavailable>";
             }
-            LOGGER.d("transact: uid=%d, descriptor=%s, code=%d", Binder.getCallingUid(), descriptor, targetCode);
+            LOGGER.d("transact: uid=%d, descriptor=%s, code=%d", caller.uid, descriptor, targetCode);
         }
         Parcel newData = Parcel.obtain();
         try {
@@ -234,24 +236,36 @@ public abstract class Service<
     public final int removeUserService(IShizukuServiceConnection conn, Bundle options) {
         enforceCallingPermission("removeUserService");
 
-        return userServiceManager.removeUserService(conn, options);
+        CallerIdentity caller = CallerIdentity.fromBinder();
+
+        return userServiceManager.removeUserService(
+                caller,
+                conn == null ? null : new LegacyServiceConnection(conn),
+                LegacyUserServiceOptions.decodeForRemove(options));
     }
 
     @Override
     public final int addUserService(IShizukuServiceConnection conn, Bundle options) {
         enforceCallingPermission("addUserService");
 
-        int callingUid = Binder.getCallingUid();
-        int callingPid = Binder.getCallingPid();
+        CallerIdentity caller = CallerIdentity.fromBinder();
         int callingApiVersion;
 
-        ClientRecord clientRecord = clientManager.findClient(callingUid, callingPid);
+        ClientRecord clientRecord = clientManager.findClient(caller.uid, caller.pid);
         if (clientRecord == null) {
             callingApiVersion = ShizukuApiConstants.SERVER_VERSION;
         } else {
             callingApiVersion = clientRecord.apiVersion;
         }
-        return userServiceManager.addUserService(conn, options, callingApiVersion);
+
+        Objects.requireNonNull(conn, "connection is null");
+        Objects.requireNonNull(options, "options is null");
+
+        return userServiceManager.addUserService(
+                caller,
+                new LegacyServiceConnection(conn),
+                LegacyUserServiceOptions.decodeForBind(options),
+                callingApiVersion);
     }
 
     @Override
@@ -269,40 +283,38 @@ public abstract class Service<
 
     @Override
     public final boolean checkSelfPermission() {
-        int callingUid = Binder.getCallingUid();
-        int callingPid = Binder.getCallingPid();
+        CallerIdentity caller = CallerIdentity.fromBinder();
 
-        if (callingUid == OsUtils.getUid() || callingPid == OsUtils.getPid()) {
+        if (caller.uid == OsUtils.getUid() || caller.pid == OsUtils.getPid()) {
             return true;
         }
 
-        return clientManager.requireClient(callingUid, callingPid).allowed;
+        return clientManager.requireClient(caller.uid, caller.pid).allowed;
     }
 
     @Override
     public final void requestPermission(int requestCode) {
-        int callingUid = Binder.getCallingUid();
-        int callingPid = Binder.getCallingPid();
-        int userId = UserHandleCompat.getUserId(callingUid);
+        CallerIdentity caller = CallerIdentity.fromBinder();
+        int userId = caller.userId();
 
-        if (callingUid == OsUtils.getUid() || callingPid == OsUtils.getPid()) {
+        if (caller.uid == OsUtils.getUid() || caller.pid == OsUtils.getPid()) {
             return;
         }
 
-        ClientRecord clientRecord = clientManager.requireClient(callingUid, callingPid);
+        ClientRecord clientRecord = clientManager.requireClient(caller.uid, caller.pid);
 
         if (clientRecord.allowed) {
             clientRecord.dispatchRequestPermissionResult(requestCode, true);
             return;
         }
 
-        ConfigPackageEntry entry = configManager.find(callingUid);
+        ConfigPackageEntry entry = configManager.find(caller.uid);
         if (entry != null && entry.isDenied()) {
             clientRecord.dispatchRequestPermissionResult(requestCode, false);
             return;
         }
 
-        showPermissionConfirmation(requestCode, clientRecord, callingUid, callingPid, userId);
+        showPermissionConfirmation(requestCode, clientRecord, caller.uid, caller.pid, userId);
     }
 
     public abstract void showPermissionConfirmation(
@@ -310,16 +322,15 @@ public abstract class Service<
 
     @Override
     public final boolean shouldShowRequestPermissionRationale() {
-        int callingUid = Binder.getCallingUid();
-        int callingPid = Binder.getCallingPid();
+        CallerIdentity caller = CallerIdentity.fromBinder();
 
-        if (callingUid == OsUtils.getUid() || callingPid == OsUtils.getPid()) {
+        if (caller.uid == OsUtils.getUid() || caller.pid == OsUtils.getPid()) {
             return true;
         }
 
-        clientManager.requireClient(callingUid, callingPid);
+        clientManager.requireClient(caller.uid, caller.pid);
 
-        ConfigPackageEntry entry = configManager.find(callingUid);
+        ConfigPackageEntry entry = configManager.find(caller.uid);
         return entry != null && entry.isDenied();
     }
 
