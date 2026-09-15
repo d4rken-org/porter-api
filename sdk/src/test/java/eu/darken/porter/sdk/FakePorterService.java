@@ -2,6 +2,7 @@ package eu.darken.porter.sdk;
 
 import android.content.pm.PackageManager;
 import android.os.Bundle;
+import android.os.IBinder;
 
 import eu.darken.porter.server.IPorterApplication;
 import eu.darken.porter.server.IPorterRemoteProcess;
@@ -25,6 +26,18 @@ class FakePorterService extends IPorterService.Stub {
     int requestedPermissionCode = -1;
     int userServiceResult;
     Bundle userServiceArgs;
+
+    int exitCalls;
+    IBinder attachedUserServiceBinder;
+    Bundle attachedUserServiceArgs;
+    int confirmationUid = -1;
+    int confirmationPid = -1;
+    int confirmationRequestCode = -1;
+    Bundle confirmationData;
+    int flags;
+    int flagsUid = -1;
+    int flagsMask = -1;
+    int flagsValue = -1;
 
     @Override
     public Bundle attach(IPorterApplication application, Bundle args) {
@@ -92,5 +105,39 @@ class FakePorterService extends IPorterService.Stub {
     @Override
     public boolean shouldShowRequestPermissionRationale() {
         return false;
+    }
+
+    @Override
+    public void exit() {
+        exitCalls++;
+    }
+
+    @Override
+    public void attachUserService(IBinder binder, Bundle args) {
+        attachedUserServiceBinder = binder;
+        attachedUserServiceArgs = args;
+    }
+
+    @Override
+    public void dispatchPermissionConfirmationResult(
+            int requestUid, int requestPid, int requestCode, Bundle data) {
+        confirmationUid = requestUid;
+        confirmationPid = requestPid;
+        confirmationRequestCode = requestCode;
+        confirmationData = data;
+    }
+
+    @Override
+    public int getFlagsForUid(int uid, int mask) {
+        flagsUid = uid;
+        flagsMask = mask;
+        return flags;
+    }
+
+    @Override
+    public void updateFlagsForUid(int uid, int mask, int value) {
+        flagsUid = uid;
+        flagsMask = mask;
+        flagsValue = value;
     }
 }
