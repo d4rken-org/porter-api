@@ -6,7 +6,7 @@ apply from: "manifest.gradle"
 
 def sdkVersion = providers.gradleProperty("version")
         .orElse(providers.environmentVariable("VERSION")).getOrElse("0.2.0")
-def publishedModules = ["aidl", "shared", "api", "provider", "client"]
+def publishedModules = ["protocol", "sdk"]
 
 allprojects {
     group = "com.github.d4rken-org.porter-api"
@@ -35,15 +35,6 @@ subprojects { subproject ->
         android.publishing {
             singleVariant("release") { withSourcesJar() }
         }
-        if (subproject.name != "client") {
-            configurations.matching {
-                it.name in ["releaseApiElements", "releaseRuntimeElements"] ||
-                        it.name.endsWith("ApiPublication") || it.name.endsWith("RuntimePublication")
-            }.configureEach {
-                outgoing.capability("${subproject.group}:${subproject.name}:${subproject.version}")
-                outgoing.capability("dev.rikka.shizuku:${subproject.name}:${subproject.version}")
-            }
-        }
         afterEvaluate {
             publishing {
                 publications {
@@ -51,14 +42,19 @@ subprojects { subproject ->
                         from components.release
                         pom {
                             name = "Porter SDK - ${subproject.name}"
-                            description = "Porter and Shizuku compatible Android SDK"
+                            description = "Porter Android SDK"
                             url = "https://github.com/d4rken-org/porter-api"
                             licenses {
                                 license {
-                                    name = subproject.name == "client" ? "Apache License 2.0" : "MIT License"
-                                    url = subproject.name == "client"
-                                            ? "https://www.apache.org/licenses/LICENSE-2.0"
-                                            : "https://opensource.org/license/mit"
+                                    name = "Apache License 2.0"
+                                    url = "https://www.apache.org/licenses/LICENSE-2.0"
+                                }
+                                if (subproject.name == "sdk") {
+                                    // Classes derived from the upstream Shizuku API keep its license.
+                                    license {
+                                        name = "MIT License"
+                                        url = "https://opensource.org/license/mit"
+                                    }
                                 }
                             }
                             scm {
