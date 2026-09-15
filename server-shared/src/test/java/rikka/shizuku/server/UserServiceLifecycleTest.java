@@ -46,6 +46,7 @@ import java.util.function.Function;
 import moe.shizuku.server.IShizukuServiceConnection;
 import rikka.hidden.compat.PackageManagerApis;
 import rikka.shizuku.ShizukuApiConstants;
+import rikka.shizuku.server.legacy.LegacyServiceConnection;
 import rikka.shizuku.server.util.HandlerUtil;
 
 /** Removal, detach and launch-cancellation behaviour of {@link UserServiceManager}. */
@@ -287,7 +288,7 @@ public class UserServiceLifecycleTest {
         record.removeSelf();
         drainCleanup();
 
-        assertFalse(record.callbacks.register(connection()));
+        assertFalse(record.callbacks.register(new LegacyServiceConnection(connection())));
     }
 
     @Test
@@ -297,7 +298,7 @@ public class UserServiceLifecycleTest {
         record.removeSelf();
         drainCleanup();
 
-        assertFalse(record.callbacks.register(connection()));
+        assertFalse(record.callbacks.register(new LegacyServiceConnection(connection())));
     }
 
     @Test
