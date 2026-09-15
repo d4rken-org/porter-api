@@ -17,9 +17,9 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
-import static rikka.shizuku.server.ServiceCallerGateTest.application;
-import static rikka.shizuku.server.ServiceCallerGateTest.entry;
-import static rikka.shizuku.server.ServiceCallerGateTest.newService;
+import static rikka.shizuku.server.ServerTestSupport.application;
+import static rikka.shizuku.server.ServerTestSupport.entry;
+import static rikka.shizuku.server.ServerTestSupport.newService;
 
 import android.content.ComponentName;
 import android.content.pm.ApplicationInfo;
@@ -45,8 +45,8 @@ import moe.shizuku.server.IShizukuApplication;
 import moe.shizuku.server.IShizukuServiceConnection;
 import rikka.hidden.compat.PackageManagerApis;
 import rikka.shizuku.ShizukuApiConstants;
-import rikka.shizuku.server.ServiceCallerGateTest.TestService;
-import rikka.shizuku.server.ServiceCallerGateTest.TestUserServiceManager;
+import rikka.shizuku.server.ServerTestSupport.TestService;
+import rikka.shizuku.server.ServerTestSupport.TestUserServiceManager;
 import rikka.shizuku.server.util.HandlerUtil;
 import rikka.shizuku.server.util.OsUtils;
 

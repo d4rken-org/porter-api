@@ -5,7 +5,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
-import static rikka.shizuku.server.ServiceCallerGateTest.newService;
+import static rikka.shizuku.server.ServerTestSupport.newService;
 
 import android.os.Bundle;
 import android.os.IBinder;
@@ -24,8 +24,8 @@ import java.lang.reflect.Modifier;
 
 import moe.shizuku.server.IShizukuApplication;
 import moe.shizuku.server.IShizukuServiceConnection;
-import rikka.shizuku.server.ServiceCallerGateTest.TestService;
-import rikka.shizuku.server.ServiceCallerGateTest.TestUserServiceManager;
+import rikka.shizuku.server.ServerTestSupport.TestService;
+import rikka.shizuku.server.ServerTestSupport.TestUserServiceManager;
 
 /**
  * The shape the consuming app reaches through. {@code ServiceAuthorizationTest},

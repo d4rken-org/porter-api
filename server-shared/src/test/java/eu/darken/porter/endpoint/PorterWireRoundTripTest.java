@@ -6,8 +6,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static rikka.shizuku.server.ServiceCallerGateTest.entry;
-import static rikka.shizuku.server.ServiceCallerGateTest.newService;
+import static rikka.shizuku.server.ServerTestSupport.entry;
+import static rikka.shizuku.server.ServerTestSupport.newService;
 
 import android.content.ComponentName;
 import android.content.pm.PackageManager;
@@ -29,8 +29,8 @@ import eu.darken.porter.core.UserServiceOptions;
 import eu.darken.porter.sdk.Porter;
 import rikka.shizuku.server.ClientManager;
 import rikka.shizuku.server.ConfigManager;
-import rikka.shizuku.server.ServiceCallerGateTest.TestService;
-import rikka.shizuku.server.ServiceCallerGateTest.TestUserServiceManager;
+import rikka.shizuku.server.ServerTestSupport.TestService;
+import rikka.shizuku.server.ServerTestSupport.TestUserServiceManager;
 import rikka.shizuku.server.util.HandlerUtil;
 import rikka.shizuku.server.util.OsUtils;
 
