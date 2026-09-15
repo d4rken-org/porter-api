@@ -113,7 +113,7 @@ public class ServiceCallerGateTest {
      * {@code Service()} loads the native porsh library, so the service under test is built without
      * running any constructor and the three manager fields are injected.
      */
-    static TestService newService(
+    public static TestService newService(
             ClientManager<ConfigManager> clientManager, UserServiceManager userServiceManager, ConfigManager configManager) {
         TestService service = mock(TestService.class, CALLS_REAL_METHODS);
         inject(service, "clientManager", clientManager);
@@ -133,13 +133,13 @@ public class ServiceCallerGateTest {
     }
 
     /** An application binder death can be fired from, which {@code addClient} needs to link to. */
-    static IShizukuApplication application(IBinder binder) {
+    public static IShizukuApplication application(IBinder binder) {
         IShizukuApplication application = mock(IShizukuApplication.class);
         when(application.asBinder()).thenReturn(binder);
         return application;
     }
 
-    static ConfigPackageEntry entry(boolean allowed, boolean denied) {
+    public static ConfigPackageEntry entry(boolean allowed, boolean denied) {
         return new ConfigPackageEntry() {
             @Override public boolean isAllowed() { return allowed; }
             @Override public boolean isDenied() { return denied; }
