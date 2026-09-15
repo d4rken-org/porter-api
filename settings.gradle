@@ -31,7 +31,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "porter-api"
-include ":aidl", ":shared", ":api", ":provider", ":client"
+include ":aidl", ":shared", ":api", ":provider", ":client", ":protocol"
 
 def includeExtras = providers.gradleProperty("includeExtras").getOrElse("false").toBoolean()
 def includeShell = providers.gradleProperty("includeShell").getOrElse("false").toBoolean()
