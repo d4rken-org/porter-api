@@ -1,25 +1,15 @@
 package rikka.shizuku.server;
 
-import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_COMPONENT;
-import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_DAEMON;
-import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_DEBUGGABLE;
-import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_NO_CREATE;
-import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_PROCESS_NAME;
-import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_REMOVE;
-import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_TAG;
-import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_USE_32_BIT_APP_PROCESS;
-import static rikka.shizuku.ShizukuApiConstants.USER_SERVICE_ARG_VERSION_CODE;
-
 import android.annotation.SuppressLint;
-import android.content.ComponentName;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
-import android.os.Binder;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.text.format.DateUtils;
 import android.util.ArrayMap;
+
+import androidx.annotation.Nullable;
 
 import java.io.OutputStream;
 import java.util.ArrayList;
@@ -31,9 +21,13 @@ import java.util.Objects;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
+import eu.darken.porter.core.CallerIdentity;
+import eu.darken.porter.core.UserServiceConnection;
+import eu.darken.porter.core.UserServiceOptions;
 import moe.shizuku.server.IShizukuServiceConnection;
 import rikka.hidden.compat.PackageManagerApis;
-import rikka.shizuku.ShizukuApiConstants;
+import rikka.shizuku.server.legacy.LegacyServiceConnection;
+import rikka.shizuku.server.legacy.LegacyUserServiceOptions;
 import rikka.shizuku.server.util.AbiUtil;
 import rikka.shizuku.server.util.Logger;
 import rikka.shizuku.server.util.UserHandleCompat;
@@ -78,29 +72,26 @@ public abstract class UserServiceManager {
     }
 
     public int removeUserService(IShizukuServiceConnection conn, Bundle options) {
-        ComponentName componentName = Objects.requireNonNull(options.getParcelable(USER_SERVICE_ARG_COMPONENT), "component is null");
+        return removeUserService(
+                CallerIdentity.fromBinder(),
+                conn == null ? null : new LegacyServiceConnection(conn),
+                LegacyUserServiceOptions.decodeForRemove(options));
+    }
 
-        int uid = Binder.getCallingUid();
-        int appId = UserHandleCompat.getAppId(uid);
-        int userId = UserHandleCompat.getUserId(uid);
+    public int removeUserService(CallerIdentity caller, @Nullable UserServiceConnection conn, UserServiceOptions options) {
+        int appId = caller.appId();
+        int userId = caller.userId();
 
-        String packageName = componentName.getPackageName();
+        String packageName = options.packageName();
         ensureCallingPackageForUserService(packageName, appId, userId);
 
-        String className = Objects.requireNonNull(componentName.getClassName(), "class is null");
-        String tag = options.getString(USER_SERVICE_ARG_TAG);
-        String key = packageName + ":" + (tag != null ? tag : className);
-
-        // API < 13.1.4 will not send USER_SERVICE_ARG_REMOVE, true by default
-        boolean remove = true;
-        if (options.containsKey(USER_SERVICE_ARG_REMOVE)) {
-            remove = options.getBoolean(USER_SERVICE_ARG_REMOVE);
-        }
+        Objects.requireNonNull(options.className(), "class is null");
+        String key = options.key();
 
         synchronized (this) {
             UserServiceRecord record = getUserServiceRecordLocked(key);
             if (record == null) return 1;
-            if (remove) {
+            if (options.remove) {
                 removeUserServiceLocked(record);
             } else {
                 record.callbacks.unregister(conn);
@@ -138,25 +129,31 @@ public abstract class UserServiceManager {
         Objects.requireNonNull(conn, "connection is null");
         Objects.requireNonNull(options, "options is null");
 
-        int uid = Binder.getCallingUid();
-        int appId = UserHandleCompat.getAppId(uid);
-        int userId = UserHandleCompat.getUserId(uid);
+        return addUserService(
+                CallerIdentity.fromBinder(),
+                new LegacyServiceConnection(conn),
+                LegacyUserServiceOptions.decodeForBind(options),
+                callingApiVersion);
+    }
 
-        ComponentName componentName = Objects.requireNonNull(options.getParcelable(USER_SERVICE_ARG_COMPONENT), "component is null");
-        String packageName = Objects.requireNonNull(componentName.getPackageName(), "package is null");
+    public int addUserService(CallerIdentity caller, UserServiceConnection conn, UserServiceOptions options, int callingApiVersion) {
+        int uid = caller.uid;
+        int appId = caller.appId();
+        int userId = caller.userId();
+
+        String packageName = Objects.requireNonNull(options.packageName(), "package is null");
         PackageInfo packageInfo = ensureCallingPackageForUserService(packageName, appId, userId);
 
-        String className = Objects.requireNonNull(componentName.getClassName(), "class is null");
+        String className = Objects.requireNonNull(options.className(), "class is null");
         String sourceDir = Objects.requireNonNull(packageInfo.applicationInfo.sourceDir, "apk path is null");
 
-        int versionCode = options.getInt(USER_SERVICE_ARG_VERSION_CODE, 1);
-        String tag = options.getString(USER_SERVICE_ARG_TAG);
-        String processNameSuffix = options.getString(USER_SERVICE_ARG_PROCESS_NAME);
-        boolean debug = options.getBoolean(USER_SERVICE_ARG_DEBUGGABLE, false);
-        boolean noCreate = options.getBoolean(USER_SERVICE_ARG_NO_CREATE, false);
-        boolean daemon = options.getBoolean(USER_SERVICE_ARG_DAEMON, true);
-        boolean use32Bits = options.getBoolean(USER_SERVICE_ARG_USE_32_BIT_APP_PROCESS, false);
-        String key = packageName + ":" + (tag != null ? tag : className);
+        int versionCode = options.versionCode;
+        String processNameSuffix = options.processNameSuffix;
+        boolean debug = options.debuggable;
+        boolean noCreate = options.noCreate;
+        boolean daemon = options.daemon;
+        boolean use32Bits = options.use32Bit;
+        String key = options.key();
 
         synchronized (this) {
             UserServiceRecord record = getUserServiceRecordLocked(key);
@@ -333,7 +330,11 @@ public abstract class UserServiceManager {
 
     public void attachUserService(IBinder binder, Bundle options, String interfaceDescriptor) {
         Objects.requireNonNull(binder, "binder is null");
-        String token = Objects.requireNonNull(options.getString(ShizukuApiConstants.USER_SERVICE_ARG_TOKEN), "token is null");
+        attachUserService(binder, LegacyUserServiceOptions.decodeToken(options), interfaceDescriptor);
+    }
+
+    public void attachUserService(IBinder binder, String token, @Nullable String interfaceDescriptor) {
+        Objects.requireNonNull(binder, "binder is null");
 
         synchronized (this) {
             sendUserServiceLocked(binder, token, interfaceDescriptor);

@@ -9,7 +9,7 @@ import android.os.RemoteCallbackList;
 
 import java.util.UUID;
 
-import moe.shizuku.server.IShizukuServiceConnection;
+import eu.darken.porter.core.UserServiceConnection;
 import rikka.shizuku.server.util.HandlerUtil;
 import rikka.shizuku.server.util.Logger;
 
@@ -17,10 +17,10 @@ public abstract class UserServiceRecord {
 
     private Runnable startTimeoutCallback;
 
-    private class ConnectionList extends RemoteCallbackList<IShizukuServiceConnection> {
+    private class ConnectionList extends RemoteCallbackList<UserServiceConnection> {
 
         @Override
-        public void onCallbackDied(IShizukuServiceConnection callback) {
+        public void onCallbackDied(UserServiceConnection callback) {
             if (daemon || getRegisteredCallbackCount() != 0) {
                 return;
             }
@@ -36,7 +36,7 @@ public abstract class UserServiceRecord {
     public final int versionCode;
     public String token;
     public IBinder service;
-    public final RemoteCallbackList<IShizukuServiceConnection> callbacks = new ConnectionList();
+    public final RemoteCallbackList<UserServiceConnection> callbacks = new ConnectionList();
     public boolean daemon;
     /**
      * Written under the manager monitor, read from the start executor and the main handler, neither
