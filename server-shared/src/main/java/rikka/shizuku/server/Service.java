@@ -17,6 +17,8 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Arrays;
 
+import eu.darken.porter.core.CallerIdentity;
+import eu.darken.porter.core.ServerProcess;
 import eu.darken.porter.porsh.PorshConfig;
 import eu.darken.porter.porsh.PorshService;
 import moe.shizuku.server.IRemoteProcess;
@@ -325,8 +327,10 @@ public abstract class Service<
     public final IRemoteProcess newProcess(String[] cmd, String[] env, String dir) {
         enforceCallingPermission("newProcess");
 
+        CallerIdentity caller = CallerIdentity.fromBinder();
+
         if (Logger.debugEnabled()) {
-            LOGGER.d("newProcess: uid=%d, cmd=%s, env=%s, dir=%s", Binder.getCallingUid(),
+            LOGGER.d("newProcess: uid=%d, cmd=%s, env=%s, dir=%s", caller.uid,
                     Arrays.toString(cmd), Arrays.toString(env), dir);
         }
 
@@ -337,10 +341,10 @@ public abstract class Service<
             throw new IllegalStateException(e.getMessage());
         }
 
-        ClientRecord clientRecord = clientManager.findClient(Binder.getCallingUid(), Binder.getCallingPid());
-        IBinder token = clientRecord != null ? clientRecord.client.asBinder() : null;
+        ClientRecord clientRecord = clientManager.findClient(caller.uid, caller.pid);
+        IBinder token = clientRecord != null ? clientRecord.callback.asBinder() : null;
 
-        return new RemoteProcessHolder(process, token);
+        return new RemoteProcessHolder(new ServerProcess(process, token));
     }
 
     @CallSuper
