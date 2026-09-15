@@ -140,10 +140,10 @@ public class ServiceCallerGateTest {
     }
 
     static ConfigPackageEntry entry(boolean allowed, boolean denied) {
-        ConfigPackageEntry entry = mock(ConfigPackageEntry.class);
-        when(entry.isAllowed()).thenReturn(allowed);
-        when(entry.isDenied()).thenReturn(denied);
-        return entry;
+        return new ConfigPackageEntry() {
+            @Override public boolean isAllowed() { return allowed; }
+            @Override public boolean isDenied() { return denied; }
+        };
     }
 
     private TestService service;
