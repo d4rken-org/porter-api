@@ -13,6 +13,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static rikka.shizuku.server.ServerTestSupport.entry;
+import static rikka.shizuku.server.ServerTestSupport.newCore;
 import static rikka.shizuku.server.ServerTestSupport.newService;
 
 import android.os.Bundle;
@@ -31,15 +32,19 @@ import org.robolectric.shadows.ShadowBinder;
 import java.lang.reflect.Field;
 import java.util.Collections;
 
+import eu.darken.porter.core.ManagerOperations;
+import eu.darken.porter.core.PorterCore;
 import eu.darken.porter.porsh.PorshService;
 import eu.darken.porter.protocol.PorterProtocol;
 import eu.darken.porter.server.IPorterApplication;
 import rikka.shizuku.ShizukuApiConstants;
 import rikka.shizuku.server.ClientManager;
 import rikka.shizuku.server.ConfigManager;
-import rikka.shizuku.server.Service;
+import rikka.shizuku.server.ServerTestSupport.TestPolicy;
 import rikka.shizuku.server.ServerTestSupport.TestService;
 import rikka.shizuku.server.ServerTestSupport.TestUserServiceManager;
+import rikka.shizuku.server.Service;
+import rikka.shizuku.server.UserServiceManager;
 import rikka.shizuku.server.util.HandlerUtil;
 
 /**
@@ -63,6 +68,7 @@ public class PorterEndpointTransactTest {
 
     private ConfigManager config;
     private ClientManager<ConfigManager> clients;
+    private PorterCore<UserServiceManager, ClientManager<ConfigManager>, ConfigManager> core;
     private TestService service;
     private PorterEndpoint endpoint;
 
@@ -71,8 +77,10 @@ public class PorterEndpointTransactTest {
         HandlerUtil.setMainHandler(mock(Handler.class));
         config = mock(ConfigManager.class);
         clients = new ClientManager<>(config);
+        core = newCore(clients, new TestUserServiceManager(), config, new TestPolicy(),
+                uid -> Collections.singletonList(PACKAGE));
         service = newService(clients, new TestUserServiceManager(), config);
-        endpoint = new PorterEndpoint(service, uid -> Collections.singletonList(PACKAGE));
+        endpoint = new PorterEndpoint(core, mock(ManagerOperations.class));
 
         ShadowBinder.setCallingUid(CLIENT_UID);
         ShadowBinder.setCallingPid(CLIENT_PID);
