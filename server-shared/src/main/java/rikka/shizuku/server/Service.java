@@ -336,8 +336,7 @@ public abstract class Service<
         return entry != null && entry.isDenied();
     }
 
-    @Override
-    public final IRemoteProcess newProcess(String[] cmd, String[] env, String dir) {
+    public final ServerProcess newServerProcess(String[] cmd, String[] env, String dir) {
         enforceCallingPermission("newProcess");
 
         CallerIdentity caller = CallerIdentity.fromBinder();
@@ -357,7 +356,12 @@ public abstract class Service<
         ClientRecord clientRecord = clientManager.findClient(caller.uid, caller.pid);
         IBinder token = clientRecord != null ? clientRecord.callback.asBinder() : null;
 
-        return new RemoteProcessHolder(new ServerProcess(process, token));
+        return new ServerProcess(process, token);
+    }
+
+    @Override
+    public final IRemoteProcess newProcess(String[] cmd, String[] env, String dir) {
+        return new RemoteProcessHolder(newServerProcess(cmd, env, dir));
     }
 
     @CallSuper
