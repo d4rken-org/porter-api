@@ -28,7 +28,7 @@ implementation("com.github.d4rken-org.porter-api:sdk:0.2.0")
 
 The SDK speaks Porter's own protocol and contains only `eu.darken.porter.*` classes. It does not include or conflict with the upstream `dev.rikka.shizuku` SDK, which an app can keep alongside it for original Shizuku support.
 
-Follow the [integration guide](https://porter.darken.eu/developers) to declare providers and permissions and select the backend. Adding the dependency alone does not connect your app to Porter.
+Follow the [integration guide](https://porter.darken.eu/developers) to request access from your app. Adding the dependency alone does not connect your app to Porter.
 
 - [API method reference and upstream history](docs/api-reference.md)
 - [User setup guide](https://porter.darken.eu/setup)
