@@ -14,7 +14,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static rikka.shizuku.server.ServerTestSupport.entry;
 import static rikka.shizuku.server.ServerTestSupport.newCore;
-import static rikka.shizuku.server.ServerTestSupport.newService;
 
 import android.os.Bundle;
 import android.os.Handler;
@@ -29,21 +28,18 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowBinder;
 
-import java.lang.reflect.Field;
 import java.util.Collections;
 
 import eu.darken.porter.core.ManagerOperations;
 import eu.darken.porter.core.PorterCore;
-import eu.darken.porter.porsh.PorshService;
 import eu.darken.porter.protocol.PorterProtocol;
 import eu.darken.porter.server.IPorterApplication;
 import rikka.shizuku.ShizukuApiConstants;
 import rikka.shizuku.server.ClientManager;
 import rikka.shizuku.server.ConfigManager;
 import rikka.shizuku.server.ServerTestSupport.TestPolicy;
-import rikka.shizuku.server.ServerTestSupport.TestService;
 import rikka.shizuku.server.ServerTestSupport.TestUserServiceManager;
-import rikka.shizuku.server.Service;
+import rikka.shizuku.server.ShizukuLegacyEndpoint;
 import rikka.shizuku.server.UserServiceManager;
 import rikka.shizuku.server.util.HandlerUtil;
 
@@ -69,7 +65,6 @@ public class PorterEndpointTransactTest {
     private ConfigManager config;
     private ClientManager<ConfigManager> clients;
     private PorterCore<UserServiceManager, ClientManager<ConfigManager>, ConfigManager> core;
-    private TestService service;
     private PorterEndpoint endpoint;
 
     @Before
@@ -79,7 +74,6 @@ public class PorterEndpointTransactTest {
         clients = new ClientManager<>(config);
         core = newCore(clients, new TestUserServiceManager(), config, new TestPolicy(),
                 uid -> Collections.singletonList(PACKAGE));
-        service = newService(clients, new TestUserServiceManager(), config);
         endpoint = new PorterEndpoint(core, mock(ManagerOperations.class));
 
         ShadowBinder.setCallingUid(CLIENT_UID);
@@ -89,24 +83,6 @@ public class PorterEndpointTransactTest {
     @After
     public void teardown() {
         ShadowBinder.reset();
-    }
-
-    /** {@code newService} runs no constructor, so the legacy service has no shell service yet. */
-    private void giveTheLegacyServiceItsShell() {
-        PorshService porshService = new PorshService(ShizukuApiConstants.BINDER_DESCRIPTOR, LEGACY_PORSH_BASE) {
-
-            @Override
-            public void enforceCallingPermission(String func) {
-                service.enforceCallingPermission(func);
-            }
-        };
-        try {
-            Field field = Service.class.getDeclaredField("porshService");
-            field.setAccessible(true);
-            field.set(service, porshService);
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
     }
 
     private void attachAllowedClient() {
@@ -200,7 +176,7 @@ public class PorterEndpointTransactTest {
 
     @Test
     public void theShizukuEndpointOwnsItsOwnShellCodes() throws Exception {
-        giveTheLegacyServiceItsShell();
+        ShizukuLegacyEndpoint legacy = new ShizukuLegacyEndpoint(core, mock(ManagerOperations.class));
 
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
@@ -208,11 +184,11 @@ public class PorterEndpointTransactTest {
             data.writeInterfaceToken(ShizukuApiConstants.BINDER_DESCRIPTOR);
             data.setDataPosition(0);
 
-            assertFalse(service.onTransact(PorterProtocol.TRANSACTION_PORSH_BASE, data, reply, 0));
+            assertFalse(legacy.onTransact(PorterProtocol.TRANSACTION_PORSH_BASE, data, reply, 0));
 
             data.setDataPosition(0);
             assertThrows(SecurityException.class,
-                    () -> service.onTransact(LEGACY_PORSH_BASE, data, reply, 0));
+                    () -> legacy.onTransact(LEGACY_PORSH_BASE, data, reply, 0));
         } finally {
             data.recycle();
             reply.recycle();

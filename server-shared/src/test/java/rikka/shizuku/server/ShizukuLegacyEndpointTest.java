@@ -4,6 +4,7 @@ import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
@@ -19,7 +20,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static rikka.shizuku.server.ServerTestSupport.application;
 import static rikka.shizuku.server.ServerTestSupport.entry;
-import static rikka.shizuku.server.ServerTestSupport.newService;
+import static rikka.shizuku.server.ServerTestSupport.newCore;
 
 import android.content.ComponentName;
 import android.content.pm.ApplicationInfo;
@@ -40,20 +41,27 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowBinder;
 
+import java.util.Collections;
+
+import eu.darken.porter.core.ManagerOperations;
+import eu.darken.porter.core.PorterCore;
 import moe.shizuku.server.IRemoteProcess;
 import moe.shizuku.server.IShizukuApplication;
 import moe.shizuku.server.IShizukuServiceConnection;
 import rikka.hidden.compat.PackageManagerApis;
 import rikka.shizuku.ShizukuApiConstants;
-import rikka.shizuku.server.ServerTestSupport.TestService;
+import rikka.shizuku.server.ServerTestSupport.TestPolicy;
 import rikka.shizuku.server.ServerTestSupport.TestUserServiceManager;
 import rikka.shizuku.server.util.HandlerUtil;
 import rikka.shizuku.server.util.OsUtils;
 
-/** What the client-facing operations on {@link Service} do with the caller's identity and record. */
+/**
+ * What the client-facing operations on {@link ShizukuLegacyEndpoint} do with the caller's identity
+ * and record.
+ */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 34, manifest = Config.NONE)
-public class ServiceClientOperationsTest {
+public class ShizukuLegacyEndpointTest {
 
     private static final String PACKAGE = "eu.darken.porter.probe";
     private static final String CLASS = "ProbeService";
@@ -66,7 +74,9 @@ public class ServiceClientOperationsTest {
     private static final int PAYLOAD = 20816;
     private static final int OUTER_FLAGS = 17;
 
-    private TestService service;
+    private ShizukuLegacyEndpoint endpoint;
+    private PorterCore<UserServiceManager, ClientManager<ConfigManager>, ConfigManager> core;
+    private TestPolicy policy;
     private ConfigManager config;
     private ClientManager<ConfigManager> clients;
     private MockedStatic<PackageManagerApis> packages;
@@ -76,7 +86,10 @@ public class ServiceClientOperationsTest {
         HandlerUtil.setMainHandler(mock(Handler.class));
         config = mock(ConfigManager.class);
         clients = new ClientManager<>(config);
-        service = newService(clients, new TestUserServiceManager(), config);
+        policy = new TestPolicy();
+        core = newCore(clients, new TestUserServiceManager(), config, policy,
+                uid -> Collections.singletonList(PACKAGE));
+        endpoint = new ShizukuLegacyEndpoint(core, mock(ManagerOperations.class));
 
         PackageInfo installed = new PackageInfo();
         installed.packageName = PACKAGE;
@@ -120,12 +133,12 @@ public class ServiceClientOperationsTest {
         IShizukuApplication app = application(mock(IBinder.class));
         attach(app, CLIENT_PID, 13);
 
-        service.requestPermission(7);
+        endpoint.requestPermission(7);
 
         ArgumentCaptor<Bundle> reply = ArgumentCaptor.forClass(Bundle.class);
         verify(app).dispatchRequestPermissionResult(eq(7), reply.capture());
         assertTrue(reply.getValue().getBoolean(ShizukuApiConstants.REQUEST_PERMISSION_REPLY_ALLOWED));
-        assertFalse(service.confirmationShown);
+        assertFalse(policy.confirmationShown);
     }
 
     @Test
@@ -134,12 +147,12 @@ public class ServiceClientOperationsTest {
         IShizukuApplication app = application(mock(IBinder.class));
         attach(app, CLIENT_PID, 13);
 
-        service.requestPermission(9);
+        endpoint.requestPermission(9);
 
         ArgumentCaptor<Bundle> reply = ArgumentCaptor.forClass(Bundle.class);
         verify(app).dispatchRequestPermissionResult(eq(9), reply.capture());
         assertFalse(reply.getValue().getBoolean(ShizukuApiConstants.REQUEST_PERMISSION_REPLY_ALLOWED));
-        assertFalse(service.confirmationShown);
+        assertFalse(policy.confirmationShown);
     }
 
     @Test
@@ -147,14 +160,14 @@ public class ServiceClientOperationsTest {
         IShizukuApplication app = application(mock(IBinder.class));
         ClientRecord record = attach(app, CLIENT_PID, 13);
 
-        service.requestPermission(11);
+        endpoint.requestPermission(11);
 
-        assertTrue(service.confirmationShown);
-        assertEquals(11, service.confirmationRequestCode);
-        assertSame(record, service.confirmationRecord);
-        assertEquals(CLIENT_UID, service.confirmationUid);
-        assertEquals(CLIENT_PID, service.confirmationPid);
-        assertEquals(CLIENT_UID / 100000, service.confirmationUserId);
+        assertTrue(policy.confirmationShown);
+        assertEquals(11, policy.confirmationRequestCode);
+        assertSame(record, policy.confirmationRecord);
+        assertEquals(CLIENT_UID, policy.confirmationUid);
+        assertEquals(CLIENT_PID, policy.confirmationPid);
+        assertEquals(CLIENT_UID / 100000, policy.confirmationUserId);
         verify(app, never()).dispatchRequestPermissionResult(anyInt(), any(Bundle.class));
     }
 
@@ -165,46 +178,46 @@ public class ServiceClientOperationsTest {
         clearInvocations(app);
         ShadowBinder.setCallingUid(OsUtils.getUid());
 
-        service.requestPermission(13);
+        endpoint.requestPermission(13);
 
-        assertFalse(service.confirmationShown);
+        assertFalse(policy.confirmationShown);
         verifyNoInteractions(app);
     }
 
     @Test
     public void requestPermissionFromUnattachedCallerThrowsIllegalState() {
-        assertThrows(IllegalStateException.class, () -> service.requestPermission(15));
+        assertThrows(IllegalStateException.class, () -> endpoint.requestPermission(15));
     }
 
     @Test
     public void checkSelfPermissionReflectsTheRecord() {
         ShadowBinder.setCallingUid(OsUtils.getUid());
-        assertTrue(service.checkSelfPermission());
+        assertTrue(endpoint.checkSelfPermission());
 
         ShadowBinder.setCallingUid(CLIENT_UID);
-        assertThrows(IllegalStateException.class, () -> service.checkSelfPermission());
+        assertThrows(IllegalStateException.class, () -> endpoint.checkSelfPermission());
 
         when(config.find(CLIENT_UID)).thenReturn(entry(true, false));
         ClientRecord record = attach(application(mock(IBinder.class)), CLIENT_PID, 13);
-        assertTrue(service.checkSelfPermission());
+        assertTrue(endpoint.checkSelfPermission());
 
         record.allowed = false;
-        assertFalse(service.checkSelfPermission());
+        assertFalse(endpoint.checkSelfPermission());
     }
 
     @Test
     public void rationaleFollowsTheDeniedEntry() {
         ShadowBinder.setCallingUid(OsUtils.getUid());
-        assertTrue(service.shouldShowRequestPermissionRationale());
+        assertTrue(endpoint.shouldShowRequestPermissionRationale());
 
         ShadowBinder.setCallingUid(CLIENT_UID);
-        assertThrows(IllegalStateException.class, () -> service.shouldShowRequestPermissionRationale());
+        assertThrows(IllegalStateException.class, () -> endpoint.shouldShowRequestPermissionRationale());
 
         attach(application(mock(IBinder.class)), CLIENT_PID, 13);
-        assertFalse(service.shouldShowRequestPermissionRationale());
+        assertFalse(endpoint.shouldShowRequestPermissionRationale());
 
         when(config.find(CLIENT_UID)).thenReturn(entry(false, true));
-        assertTrue(service.shouldShowRequestPermissionRationale());
+        assertTrue(endpoint.shouldShowRequestPermissionRationale());
     }
 
     /**
@@ -225,12 +238,14 @@ public class ServiceClientOperationsTest {
         Parcel data = Parcel.obtain();
         Parcel reply = Parcel.obtain();
         try {
+            data.writeInterfaceToken(ShizukuApiConstants.BINDER_DESCRIPTOR);
             data.writeStrongBinder(target);
             data.writeInt(TARGET_CODE);
             data.writeInt(IN_PARCEL_FLAGS);
             data.writeInt(PAYLOAD);
             data.setDataPosition(0);
-            service.transactRemote(data, reply, OUTER_FLAGS);
+            assertTrue(endpoint.onTransact(
+                    ShizukuApiConstants.BINDER_TRANSACTION_transact, data, reply, OUTER_FLAGS));
         } finally {
             data.recycle();
             reply.recycle();
@@ -250,7 +265,7 @@ public class ServiceClientOperationsTest {
         assertArrayEquals(new int[]{OUTER_FLAGS, IN_PARCEL_FLAGS}, forward());
 
         ShadowBinder.setCallingPid(CLIENT_PID + 2);
-        service.callerPermission = true;
+        policy.callerPermission = true;
         assertArrayEquals(new int[]{OUTER_FLAGS, IN_PARCEL_FLAGS}, forward());
     }
 
@@ -261,9 +276,11 @@ public class ServiceClientOperationsTest {
 
     @Test
     public void legacyAttachSynthesisesTheV13Bundle() throws Exception {
+        Bundle[] bound = new Bundle[1];
         IShizukuApplication.Stub app = new IShizukuApplication.Stub() {
             @Override
             public void bindApplication(Bundle data) {
+                bound[0] = data;
             }
 
             @Override
@@ -283,11 +300,14 @@ public class ServiceClientOperationsTest {
             data.writeString(PACKAGE);
             data.setDataPosition(0);
 
-            assertTrue(service.onTransact(14, data, reply, 0));
+            assertTrue(endpoint.onTransact(14, data, reply, 0));
 
-            assertSame(app, service.attachedApplication);
-            assertEquals(PACKAGE, service.attachedArgs.getString(ShizukuApiConstants.ATTACH_APPLICATION_PACKAGE_NAME));
-            assertEquals(-1, service.attachedArgs.getInt(ShizukuApiConstants.ATTACH_APPLICATION_API_VERSION));
+            assertNotNull(bound[0]);
+            assertEquals(12, bound[0].getInt(ShizukuApiConstants.BIND_APPLICATION_SERVER_VERSION));
+            ClientRecord record = clients.findClient(CLIENT_UID, CLIENT_PID);
+            assertNotNull(record);
+            assertEquals(PACKAGE, record.packageName);
+            assertEquals(-1, record.apiVersion);
             reply.setDataPosition(0);
             reply.readException();
         } finally {
@@ -301,15 +321,15 @@ public class ServiceClientOperationsTest {
         when(config.find(CLIENT_UID)).thenReturn(entry(true, false));
 
         attach(application(mock(IBinder.class)), CLIENT_PID, 12);
-        assertEquals(1, service.addUserService(connection(), bindOptions(true)));
+        assertEquals(1, endpoint.addUserService(connection(), bindOptions(true)));
 
         ShadowBinder.setCallingPid(CLIENT_PID + 1);
         attach(application(mock(IBinder.class)), CLIENT_PID + 1, 13);
-        assertEquals(-1, service.addUserService(connection(), bindOptions(true)));
+        assertEquals(-1, endpoint.addUserService(connection(), bindOptions(true)));
 
         ShadowBinder.setCallingPid(CLIENT_PID + 2);
-        service.callerPermission = true;
-        assertEquals(-1, service.addUserService(connection(), bindOptions(true)));
+        policy.callerPermission = true;
+        assertEquals(-1, endpoint.addUserService(connection(), bindOptions(true)));
     }
 
     @Test
@@ -319,25 +339,25 @@ public class ServiceClientOperationsTest {
         attach(application(appBinder), CLIENT_PID, 13);
         clearInvocations(appBinder);
 
-        IRemoteProcess process = service.newProcess(new String[]{"sh", "-c", "exit 0"}, null, null);
+        IRemoteProcess process = endpoint.newProcess(new String[]{"sh", "-c", "exit 0"}, null, null);
 
         assertNotNull(process);
         verify(appBinder).linkToDeath(any(IBinder.DeathRecipient.class), eq(0));
 
         ShadowBinder.setCallingPid(CLIENT_PID + 1);
-        service.callerPermission = true;
+        policy.callerPermission = true;
         clearInvocations(appBinder);
 
-        assertNotNull(service.newProcess(new String[]{"sh", "-c", "exit 0"}, null, null));
+        assertNotNull(endpoint.newProcess(new String[]{"sh", "-c", "exit 0"}, null, null));
 
         verify(appBinder, never()).linkToDeath(any(IBinder.DeathRecipient.class), anyInt());
     }
 
     @Test
     public void newProcessTranslatesExecFailure() {
-        service.callerPermission = true;
+        policy.callerPermission = true;
 
         assertThrows(IllegalStateException.class,
-                () -> service.newProcess(new String[]{"/nonexistent/porter-probe"}, null, null));
+                () -> endpoint.newProcess(new String[]{"/nonexistent/porter-probe"}, null, null));
     }
 }

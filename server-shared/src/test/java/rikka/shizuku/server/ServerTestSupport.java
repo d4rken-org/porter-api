@@ -1,13 +1,11 @@
 package rikka.shizuku.server;
 
-import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import android.os.Bundle;
 import android.os.IBinder;
 
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.IntFunction;
@@ -102,92 +100,6 @@ public final class ServerTestSupport {
             ServerPolicy policy,
             IntFunction<List<String>> packagesForUid) {
         return new PorterCore<>(userServiceManager, clientManager, configManager, policy, packagesForUid);
-    }
-
-    /**
-     * The six {@code IShizukuService} methods {@link Service} does not implement stay abstract;
-     * {@code mock(TestService.class, CALLS_REAL_METHODS)} answers those with defaults.
-     */
-    public abstract static class TestService
-            extends Service<UserServiceManager, ClientManager<ConfigManager>, ConfigManager> {
-
-        public boolean callerPermission;
-        public boolean managerPermission;
-
-        public boolean confirmationShown;
-        public int confirmationRequestCode;
-        public ClientRecord confirmationRecord;
-        public int confirmationUid;
-        public int confirmationPid;
-        public int confirmationUserId;
-
-        public IShizukuApplication attachedApplication;
-        public Bundle attachedArgs;
-
-        @Override
-        public UserServiceManager onCreateUserServiceManager() {
-            return null;
-        }
-
-        @Override
-        public ClientManager<ConfigManager> onCreateClientManager() {
-            return null;
-        }
-
-        @Override
-        public ConfigManager onCreateConfigManager() {
-            return null;
-        }
-
-        @Override
-        public boolean checkCallerPermission(String func, int callingUid, int callingPid, ClientRecord clientRecord) {
-            return callerPermission;
-        }
-
-        @Override
-        public boolean checkCallerManagerPermission(String func, int callingUid, int callingPid) {
-            return managerPermission;
-        }
-
-        @Override
-        public void showPermissionConfirmation(
-                int requestCode, ClientRecord clientRecord, int callingUid, int callingPid, int userId) {
-            confirmationShown = true;
-            confirmationRequestCode = requestCode;
-            confirmationRecord = clientRecord;
-            confirmationUid = callingUid;
-            confirmationPid = callingPid;
-            confirmationUserId = userId;
-        }
-
-        @Override
-        public void attachApplication(IShizukuApplication application, Bundle args) {
-            attachedApplication = application;
-            attachedArgs = args;
-        }
-    }
-
-    /**
-     * {@code Service()} loads the native porsh library, so the service under test is built without
-     * running any constructor and the three manager fields are injected.
-     */
-    public static TestService newService(
-            ClientManager<ConfigManager> clientManager, UserServiceManager userServiceManager, ConfigManager configManager) {
-        TestService service = mock(TestService.class, CALLS_REAL_METHODS);
-        inject(service, "clientManager", clientManager);
-        inject(service, "userServiceManager", userServiceManager);
-        inject(service, "configManager", configManager);
-        return service;
-    }
-
-    static void inject(Object service, String name, Object value) {
-        try {
-            Field field = Service.class.getDeclaredField(name);
-            field.setAccessible(true);
-            field.set(service, value);
-        } catch (ReflectiveOperationException e) {
-            throw new AssertionError(e);
-        }
     }
 
     /** An application binder death can be fired from, which {@code addClient} needs to link to. */
