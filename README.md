@@ -35,4 +35,4 @@ Follow the [integration guide](https://porter.darken.eu/developers) to request a
 
 ## License
 
-Upstream API code is MIT with RikkaW attribution. The Porter SDK (`protocol`, `sdk`) is Apache 2.0, with portions of `sdk` derived from the MIT code.
+Upstream API code is [MIT](LICENSE) with RikkaW attribution. The Porter SDK (`protocol`, `sdk`) is [Apache 2.0](sdk/LICENSE), with portions of `sdk` derived from the MIT code.
