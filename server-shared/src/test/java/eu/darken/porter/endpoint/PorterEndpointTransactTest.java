@@ -12,8 +12,8 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static rikka.shizuku.server.ServiceCallerGateTest.entry;
-import static rikka.shizuku.server.ServiceCallerGateTest.newService;
+import static rikka.shizuku.server.ServerTestSupport.entry;
+import static rikka.shizuku.server.ServerTestSupport.newService;
 
 import android.os.Bundle;
 import android.os.Handler;
@@ -38,8 +38,8 @@ import rikka.shizuku.ShizukuApiConstants;
 import rikka.shizuku.server.ClientManager;
 import rikka.shizuku.server.ConfigManager;
 import rikka.shizuku.server.Service;
-import rikka.shizuku.server.ServiceCallerGateTest.TestService;
-import rikka.shizuku.server.ServiceCallerGateTest.TestUserServiceManager;
+import rikka.shizuku.server.ServerTestSupport.TestService;
+import rikka.shizuku.server.ServerTestSupport.TestUserServiceManager;
 import rikka.shizuku.server.util.HandlerUtil;
 
 /**

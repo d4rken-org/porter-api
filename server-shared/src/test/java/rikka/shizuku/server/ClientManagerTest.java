@@ -14,8 +14,8 @@ import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static rikka.shizuku.server.ServiceCallerGateTest.application;
-import static rikka.shizuku.server.ServiceCallerGateTest.entry;
+import static rikka.shizuku.server.ServerTestSupport.application;
+import static rikka.shizuku.server.ServerTestSupport.entry;
 
 import android.os.IBinder;
 import android.os.RemoteException;

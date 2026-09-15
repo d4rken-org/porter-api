@@ -21,9 +21,9 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static rikka.shizuku.server.ServiceCallerGateTest.application;
-import static rikka.shizuku.server.ServiceCallerGateTest.entry;
-import static rikka.shizuku.server.ServiceCallerGateTest.newService;
+import static rikka.shizuku.server.ServerTestSupport.application;
+import static rikka.shizuku.server.ServerTestSupport.entry;
+import static rikka.shizuku.server.ServerTestSupport.newService;
 
 import android.os.Bundle;
 import android.os.Handler;
@@ -49,8 +49,8 @@ import eu.darken.porter.server.IPorterApplication;
 import rikka.shizuku.server.ClientManager;
 import rikka.shizuku.server.ClientRecord;
 import rikka.shizuku.server.ConfigManager;
-import rikka.shizuku.server.ServiceCallerGateTest.TestService;
-import rikka.shizuku.server.ServiceCallerGateTest.TestUserServiceManager;
+import rikka.shizuku.server.ServerTestSupport.TestService;
+import rikka.shizuku.server.ServerTestSupport.TestUserServiceManager;
 import rikka.shizuku.server.util.HandlerUtil;
 import rikka.shizuku.server.util.OsUtils;
 
