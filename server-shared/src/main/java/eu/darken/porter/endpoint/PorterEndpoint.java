@@ -3,14 +3,18 @@ package eu.darken.porter.endpoint;
 import static eu.darken.porter.protocol.PorterProtocol.ATTACH_PACKAGE_NAME;
 import static eu.darken.porter.protocol.PorterProtocol.ATTACH_PROTOCOL_VERSION;
 import static eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE;
+import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_CONFIRMATION_ALLOWED;
+import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_CONFIRMATION_ONETIME;
 import static eu.darken.porter.protocol.PorterProtocol.REPLY_CAPABILITIES;
 import static eu.darken.porter.protocol.PorterProtocol.REPLY_PERMISSION_GRANTED;
 import static eu.darken.porter.protocol.PorterProtocol.REPLY_PROTOCOL_VERSION;
 import static eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_SECONTEXT;
 import static eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_UID;
 import static eu.darken.porter.protocol.PorterProtocol.REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE;
+import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TOKEN;
 
 import android.os.Bundle;
+import android.os.IBinder;
 import android.os.Parcel;
 import android.os.RemoteException;
 
@@ -164,6 +168,48 @@ public class PorterEndpoint extends IPorterService.Stub {
     @Override
     public boolean shouldShowRequestPermissionRationale() {
         return core.shouldShowRequestPermissionRationale(CallerIdentity.fromBinder());
+    }
+
+    @Override
+    public void exit() {
+        core.enforceManagerPermission("exit", CallerIdentity.fromBinder());
+        managerOperations.exit();
+    }
+
+    @Override
+    public void attachUserService(IBinder binder, Bundle args) {
+        core.enforceManagerPermission("attachUserService", CallerIdentity.fromBinder());
+        managerOperations.attachUserService(
+                binder, Objects.requireNonNull(args.getString(USER_SERVICE_TOKEN), "token is null"));
+    }
+
+    @Override
+    public void dispatchPermissionConfirmationResult(
+            int requestUid, int requestPid, int requestCode, Bundle data) {
+        core.enforceManagerPermission("dispatchPermissionConfirmationResult", CallerIdentity.fromBinder());
+
+        if (data == null) {
+            return;
+        }
+
+        managerOperations.dispatchPermissionConfirmationResult(
+                requestUid,
+                requestPid,
+                requestCode,
+                data.getBoolean(PERMISSION_CONFIRMATION_ALLOWED, false),
+                data.getBoolean(PERMISSION_CONFIRMATION_ONETIME, false));
+    }
+
+    @Override
+    public int getFlagsForUid(int uid, int mask) {
+        core.enforceManagerPermission("getFlagsForUid", CallerIdentity.fromBinder());
+        return managerOperations.getFlagsForUid(uid, mask);
+    }
+
+    @Override
+    public void updateFlagsForUid(int uid, int mask, int value) {
+        core.enforceManagerPermission("updateFlagsForUid", CallerIdentity.fromBinder());
+        managerOperations.updateFlagsForUid(uid, mask, value);
     }
 
     @CallSuper

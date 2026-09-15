@@ -4,6 +4,8 @@ import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
 import static eu.darken.porter.protocol.PorterProtocol.ATTACH_PACKAGE_NAME;
 import static eu.darken.porter.protocol.PorterProtocol.ATTACH_PROTOCOL_VERSION;
 import static eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE;
+import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_CONFIRMATION_ALLOWED;
+import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_CONFIRMATION_ONETIME;
 import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_RESULT_ALLOWED;
 import static eu.darken.porter.protocol.PorterProtocol.REPLY_CAPABILITIES;
 import static eu.darken.porter.protocol.PorterProtocol.REPLY_PERMISSION_GRANTED;
@@ -19,6 +21,7 @@ import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_NO_CREATE;
 import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_PROCESS_NAME_SUFFIX;
 import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_REMOVE;
 import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TAG;
+import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TOKEN;
 import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_USE_32_BIT;
 import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_VERSION_CODE;
 
@@ -648,6 +651,59 @@ public final class Porter {
             throw rethrowAsRuntimeException(e);
         }
         return shouldShowRequestPermissionRationale;
+    }
+
+    // --------------------- non-app ----------------------
+
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public static void exit() {
+        try {
+            requireService().exit();
+        } catch (RemoteException e) {
+            throw rethrowAsRuntimeException(e);
+        }
+    }
+
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public static void attachUserService(@NonNull IBinder binder, @NonNull String token) {
+        Bundle args = new Bundle();
+        args.putString(USER_SERVICE_TOKEN, token);
+        try {
+            requireService().attachUserService(binder, args);
+        } catch (RemoteException e) {
+            throw rethrowAsRuntimeException(e);
+        }
+    }
+
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public static void dispatchPermissionConfirmationResult(
+            int requestUid, int requestPid, int requestCode, boolean allowed, boolean onetime) {
+        Bundle data = new Bundle();
+        data.putBoolean(PERMISSION_CONFIRMATION_ALLOWED, allowed);
+        data.putBoolean(PERMISSION_CONFIRMATION_ONETIME, onetime);
+        try {
+            requireService().dispatchPermissionConfirmationResult(requestUid, requestPid, requestCode, data);
+        } catch (RemoteException e) {
+            throw rethrowAsRuntimeException(e);
+        }
+    }
+
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public static int getFlagsForUid(int uid, int mask) {
+        try {
+            return requireService().getFlagsForUid(uid, mask);
+        } catch (RemoteException e) {
+            throw rethrowAsRuntimeException(e);
+        }
+    }
+
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public static void updateFlagsForUid(int uid, int mask, int value) {
+        try {
+            requireService().updateFlagsForUid(uid, mask, value);
+        } catch (RemoteException e) {
+            throw rethrowAsRuntimeException(e);
+        }
     }
 
     /** Drops the connection and every listener, so one test cannot see another's state. */

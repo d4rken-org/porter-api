@@ -29,4 +29,14 @@ interface IPorterService {
     boolean checkSelfPermission() = 11;
 
     boolean shouldShowRequestPermissionRationale() = 12;
+
+    void exit() = 13;
+
+    void attachUserService(in IBinder binder, in Bundle args) = 14;
+
+    oneway void dispatchPermissionConfirmationResult(int requestUid, int requestPid, int requestCode, in Bundle data) = 15;
+
+    int getFlagsForUid(int uid, int mask) = 16;
+
+    void updateFlagsForUid(int uid, int mask, int value) = 17;
 }

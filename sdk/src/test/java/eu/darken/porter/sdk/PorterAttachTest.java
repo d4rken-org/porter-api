@@ -31,6 +31,8 @@ import org.robolectric.shadows.ShadowBinder;
 
 import java.util.List;
 
+import eu.darken.porter.protocol.PorterProtocol;
+
 /** What {@code onBinderReceived} sends, what it believes of the reply and what it forgets. */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 34, manifest = Config.NONE)
@@ -68,7 +70,7 @@ public class PorterAttachTest {
         FakePorterService fake = attached();
 
         assertEquals(PACKAGE, fake.attachArgs.getString(ATTACH_PACKAGE_NAME));
-        assertEquals(1, fake.attachArgs.getInt(ATTACH_PROTOCOL_VERSION));
+        assertEquals(PorterProtocol.VERSION, fake.attachArgs.getInt(ATTACH_PROTOCOL_VERSION));
 
         assertTrue(Porter.pingBinder());
         assertEquals(SERVER_UID, Porter.getUid());
