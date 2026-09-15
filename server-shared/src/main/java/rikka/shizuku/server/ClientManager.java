@@ -7,7 +7,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
+import eu.darken.porter.core.CallerIdentity;
+import eu.darken.porter.core.ClientCallback;
 import moe.shizuku.server.IShizukuApplication;
+import rikka.shizuku.server.legacy.LegacyClientCallback;
 import rikka.shizuku.server.util.Logger;
 
 public class ClientManager<ConfigMgr extends ConfigManager> {
@@ -63,14 +66,18 @@ public class ClientManager<ConfigMgr extends ConfigManager> {
     }
 
     public ClientRecord addClient(int uid, int pid, IShizukuApplication client, String packageName, int apiVersion) {
-        ClientRecord clientRecord = new ClientRecord(uid, pid, client, packageName, apiVersion);
+        return attach(new CallerIdentity(uid, pid), new LegacyClientCallback(client), packageName, apiVersion);
+    }
 
-        ConfigPackageEntry entry = configManager.find(uid);
+    public ClientRecord attach(CallerIdentity identity, ClientCallback callback, String packageName, int apiVersion) {
+        ClientRecord clientRecord = new ClientRecord(identity, callback, packageName, apiVersion);
+
+        ConfigPackageEntry entry = configManager.find(identity.uid);
         if (entry != null && entry.isAllowed()) {
             clientRecord.allowed = true;
         }
 
-        IBinder binder = client.asBinder();
+        IBinder binder = callback.asBinder();
         IBinder.DeathRecipient deathRecipient = () -> clientRecords.remove(clientRecord);
         try {
             binder.linkToDeath(deathRecipient, 0);
