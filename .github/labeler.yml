@@ -16,6 +16,7 @@
       - any-glob-to-any-file:
           - "aidl/**"
           - "shared/**"
+          - "protocol/**"
           # Holds the protocol version constants, which is why it is carved
           # out of the generic *.gradle rule under "Build process" below.
           - "manifest.gradle"
@@ -25,6 +26,7 @@
       - any-glob-to-any-file:
           - "api/**"
           - "provider/**"
+          - "sdk/**"
 
 "c: Client":
   - changed-files:
@@ -39,7 +41,7 @@
 "c: Shell":
   - changed-files:
       - any-glob-to-any-file:
-          - "rish/**"
+          - "porsh/**"
 
 "c: Examples":
   - changed-files:

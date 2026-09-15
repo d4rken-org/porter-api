@@ -23,10 +23,10 @@ dependencyResolutionManagement {
 Then add:
 
 ```kotlin
-implementation("com.github.d4rken-org.porter-api:client:0.2.0")
+implementation("com.github.d4rken-org.porter-api:sdk:0.2.0")
 ```
 
-The client artifact includes the compatible API modules transitively. Remove upstream `dev.rikka.shizuku` SDK dependencies and any copied Porter adapter classes to avoid duplicate classes. Keep your existing `rikka.shizuku.*` imports.
+The SDK speaks Porter's own protocol and contains only `eu.darken.porter.*` classes. It does not include or conflict with the upstream `dev.rikka.shizuku` SDK, which an app can keep alongside it for original Shizuku support.
 
 Follow the [integration guide](https://porter.darken.eu/developers) to declare providers and permissions and select the backend. Adding the dependency alone does not connect your app to Porter.
 
@@ -35,4 +35,4 @@ Follow the [integration guide](https://porter.darken.eu/developers) to declare p
 
 ## License
 
-Upstream API code retains the [MIT license](LICENSE) and RikkaW attribution. The Porter client adapter uses [Apache 2.0](client/LICENSE); it originated in `d4rken-org/porter` at commit `2f94c05cdd3b367262c10cf5dc6685d7c304ecb7`.
+Upstream API code is MIT with RikkaW attribution. The Porter SDK (`protocol`, `sdk`) is Apache 2.0, with portions of `sdk` derived from the MIT code.

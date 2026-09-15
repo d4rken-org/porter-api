@@ -2,21 +2,16 @@ package eu.darken.porter.sdk.consumer;
 
 import android.app.Application;
 import android.content.pm.PackageManager;
-import eu.darken.porter.client.PorterClient;
-import rikka.shizuku.Shizuku;
-import rikka.shizuku.ShizukuBinderWrapper;
+import eu.darken.porter.sdk.Porter;
+import eu.darken.porter.sdk.PorterBinderWrapper;
 
 public class ConsumerApplication extends Application {
-    public PorterClient.Backend selectedBackend() {
-        return PorterClient.getActiveBackend(this);
-    }
-
     public boolean hasAccess() {
-        return Shizuku.pingBinder()
-                && Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED;
+        return Porter.pingBinder()
+                && Porter.checkSelfPermission() == PackageManager.PERMISSION_GRANTED;
     }
 
-    public ShizukuBinderWrapper wrap(android.os.IBinder binder) {
-        return new ShizukuBinderWrapper(binder);
+    public PorterBinderWrapper wrap(android.os.IBinder binder) {
+        return new PorterBinderWrapper(binder);
     }
 }

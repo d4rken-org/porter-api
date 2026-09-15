@@ -10,8 +10,7 @@ from pathlib import Path
 root = Path(sys.argv[1]) / 'com/github/d4rken-org/porter-api'
 version = sys.argv[2]
 group = 'com.github.d4rken-org.porter-api'
-modules = {'aidl': set(), 'shared': {'aidl'}, 'api': {'aidl', 'shared'},
-           'provider': {'api'}, 'client': {'api', 'provider'}}
+modules = {'protocol': set(), 'sdk': {'protocol'}}
 ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
 for module, expected in modules.items():
     base = root / module / version / f'{module}-{version}'
@@ -19,7 +18,13 @@ for module, expected in modules.items():
         assert Path(str(base) + suffix).is_file(), f'Missing {base}{suffix}'
     with zipfile.ZipFile(str(base) + '.aar') as aar:
         with zipfile.ZipFile(io.BytesIO(aar.read('classes.jar'))) as classes:
-            assert f'META-INF/LICENSE-{module}' in classes.namelist(), f'{module}: missing license'
+            names = classes.namelist()
+            assert f'META-INF/LICENSE-{module}' in names, f'{module}: missing license'
+            for name in names:
+                if not name.endswith('.class'):
+                    continue
+                assert name.startswith('eu/darken/porter/'), f'{module}: foreign class {name}'
+                assert not name.startswith(('moe/shizuku/', 'rikka/')), f'{module}: upstream class {name}'
     pom = ET.parse(str(base) + '.pom').getroot()
     assert pom.findtext('m:groupId', namespaces=ns) == group
     assert pom.findtext('m:version', namespaces=ns) == version
@@ -35,12 +40,11 @@ for module, expected in modules.items():
     for variant in metadata['variants']:
         if variant['attributes'].get('org.gradle.category') != 'library':
             continue
-        if module != 'client':
-            capabilities = {(c['group'], c['name']) for c in variant['capabilities']}
-            assert (group, module) in capabilities
-            assert ('dev.rikka.shizuku', module) in capabilities
+        # Gradle omits the key entirely when no capability is declared explicitly.
+        for capability in variant.get('capabilities', []):
+            assert capability['group'] != 'dev.rikka.shizuku', (module, capability)
         for dependency in variant.get('dependencies', []):
             assert dependency['group'] != 'dev.rikka.shizuku'
             if dependency['group'] == group:
                 assert dependency['version']['requires'] == version
-    print(f'PASS {module}: complete artifacts, Porter dependencies and conflict metadata')
+    print(f'PASS {module}: complete artifacts, Porter-only classes, no upstream capability')

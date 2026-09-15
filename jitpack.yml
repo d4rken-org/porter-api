@@ -1,4 +1,4 @@
 jdk:
   - openjdk17
 install:
-  - ./gradlew --no-daemon :aidl:publishReleasePublicationToMavenLocal :shared:publishReleasePublicationToMavenLocal :api:publishReleasePublicationToMavenLocal :provider:publishReleasePublicationToMavenLocal :client:publishReleasePublicationToMavenLocal
+  - ./gradlew --no-daemon :protocol:publishReleasePublicationToMavenLocal :sdk:publishReleasePublicationToMavenLocal
