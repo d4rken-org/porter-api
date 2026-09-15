@@ -44,15 +44,17 @@ public abstract class Service<
     private final ClientMgr clientManager;
     private final PorshService porshService;
 
+    private static final int LEGACY_PORSH_TRANSACTION_BASE = 30000;
+
     protected static final Logger LOGGER = new Logger("Service");
 
     public Service() {
-        PorshConfig.init(ShizukuApiConstants.BINDER_DESCRIPTOR, 30000);
+        PorshConfig.init(ShizukuApiConstants.BINDER_DESCRIPTOR, LEGACY_PORSH_TRANSACTION_BASE);
 
         userServiceManager = onCreateUserServiceManager();
         configManager = onCreateConfigManager();
         clientManager = onCreateClientManager();
-        porshService = new PorshService() {
+        porshService = new PorshService(ShizukuApiConstants.BINDER_DESCRIPTOR, LEGACY_PORSH_TRANSACTION_BASE) {
 
             @Override
             public void enforceCallingPermission(String func) {

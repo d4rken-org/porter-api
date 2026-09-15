@@ -15,16 +15,22 @@ public abstract class PorshService {
 
     private static final String TAG = "PorshService";
 
+    private final String interfaceToken;
+    private final int transactionCodeStart;
     private final PorshHostRegistry registry;
     private final EnvPolicy envPolicy;
 
-    public PorshService() {
+    public PorshService(String interfaceToken, int transactionCodeStart) {
         this(
+                interfaceToken,
+                transactionCodeStart,
                 new PorshHostRegistry(PorshHost::new, SystemClock::elapsedRealtime),
                 new EnvPolicy(Os.getuid() == 0));
     }
 
-    PorshService(PorshHostRegistry registry, EnvPolicy envPolicy) {
+    PorshService(String interfaceToken, int transactionCodeStart, PorshHostRegistry registry, EnvPolicy envPolicy) {
+        this.interfaceToken = interfaceToken;
+        this.transactionCodeStart = transactionCodeStart;
         this.registry = registry;
         this.envPolicy = envPolicy;
     }
@@ -50,7 +56,7 @@ public abstract class PorshService {
     public abstract void enforceCallingPermission(String func);
 
     public boolean onTransact(int code, @NonNull Parcel data, @Nullable Parcel reply, int flags) {
-        if (code == PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_createHost)) {
+        if (code == transactionCodeStart + PorshConfig.TRANSACTION_createHost) {
             Log.d(TAG, "TRANSACTION_createHost");
 
             enforceCallingPermission("createHost");
@@ -63,7 +69,7 @@ public abstract class PorshService {
             ParcelFileDescriptor stdout;
             ParcelFileDescriptor stderr = null;
 
-            data.enforceInterface(PorshConfig.getInterfaceToken());
+            data.enforceInterface(interfaceToken);
             byte tty = data.readByte();
             stdin = data.readFileDescriptor();
             stdout = data.readFileDescriptor();
@@ -76,24 +82,24 @@ public abstract class PorshService {
             createHost(args, env, dir, tty, stdin, stdout, stderr);
             reply.writeNoException();
             return true;
-        } else if (code == PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_setWindowSize)) {
+        } else if (code == transactionCodeStart + PorshConfig.TRANSACTION_setWindowSize) {
             Log.d(TAG, "TRANSACTION_setWindowSize");
 
             enforceCallingPermission("setWindowSize");
 
-            data.enforceInterface(PorshConfig.getInterfaceToken());
+            data.enforceInterface(interfaceToken);
             long size = data.readLong();
             setWindowSize(size);
             if (reply != null) {
                 reply.writeNoException();
             }
             return true;
-        } else if (code == PorshConfig.getTransactionCode(PorshConfig.TRANSACTION_getExitCode)) {
+        } else if (code == transactionCodeStart + PorshConfig.TRANSACTION_getExitCode) {
             Log.d(TAG, "TRANSACTION_getExitCode");
 
             enforceCallingPermission("getExitCode");
 
-            data.enforceInterface(PorshConfig.getInterfaceToken());
+            data.enforceInterface(interfaceToken);
             int exitCode = getExitCode();
             if (reply != null) {
                 reply.writeNoException();
