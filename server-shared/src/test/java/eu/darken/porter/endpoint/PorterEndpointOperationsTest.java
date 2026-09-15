@@ -22,7 +22,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static rikka.shizuku.server.ServerTestSupport.entry;
-import static rikka.shizuku.server.ServerTestSupport.newService;
+import static rikka.shizuku.server.ServerTestSupport.newCore;
 
 import android.content.ComponentName;
 import android.content.pm.ApplicationInfo;
@@ -48,13 +48,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
+import eu.darken.porter.core.ManagerOperations;
 import eu.darken.porter.server.IPorterApplication;
 import eu.darken.porter.server.IPorterRemoteProcess;
 import eu.darken.porter.server.IPorterServiceConnection;
 import rikka.hidden.compat.PackageManagerApis;
 import rikka.shizuku.server.ClientManager;
 import rikka.shizuku.server.ConfigManager;
-import rikka.shizuku.server.ServerTestSupport.TestService;
+import rikka.shizuku.server.ServerTestSupport.TestPolicy;
 import rikka.shizuku.server.UserServiceManager;
 import rikka.shizuku.server.UserServiceRecord;
 import rikka.shizuku.server.util.HandlerUtil;
@@ -75,7 +76,6 @@ public class PorterEndpointOperationsTest {
     private ConfigManager config;
     private ClientManager<ConfigManager> clients;
     private RecordingUserServiceManager userServices;
-    private TestService service;
     private PorterEndpoint endpoint;
     private MockedStatic<PackageManagerApis> packages;
 
@@ -111,8 +111,10 @@ public class PorterEndpointOperationsTest {
         config = mock(ConfigManager.class);
         clients = new ClientManager<>(config);
         userServices = new RecordingUserServiceManager();
-        service = newService(clients, userServices, config);
-        endpoint = new PorterEndpoint(service, uid -> Collections.singletonList(PACKAGE));
+        endpoint = new PorterEndpoint(
+                newCore(clients, userServices, config, new TestPolicy(),
+                        uid -> Collections.singletonList(PACKAGE)),
+                mock(ManagerOperations.class));
 
         PackageInfo installed = new PackageInfo();
         installed.packageName = PACKAGE;

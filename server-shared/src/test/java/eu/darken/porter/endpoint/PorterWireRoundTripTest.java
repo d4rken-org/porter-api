@@ -7,7 +7,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static rikka.shizuku.server.ServerTestSupport.entry;
-import static rikka.shizuku.server.ServerTestSupport.newService;
+import static rikka.shizuku.server.ServerTestSupport.newCore;
 
 import android.content.ComponentName;
 import android.content.pm.PackageManager;
@@ -25,11 +25,13 @@ import org.robolectric.shadows.ShadowLooper;
 
 import java.util.Collections;
 
+import eu.darken.porter.core.ManagerOperations;
 import eu.darken.porter.core.UserServiceOptions;
+import eu.darken.porter.protocol.PorterProtocol;
 import eu.darken.porter.sdk.Porter;
 import rikka.shizuku.server.ClientManager;
 import rikka.shizuku.server.ConfigManager;
-import rikka.shizuku.server.ServerTestSupport.TestService;
+import rikka.shizuku.server.ServerTestSupport.TestPolicy;
 import rikka.shizuku.server.ServerTestSupport.TestUserServiceManager;
 import rikka.shizuku.server.util.HandlerUtil;
 import rikka.shizuku.server.util.OsUtils;
@@ -50,7 +52,6 @@ public class PorterWireRoundTripTest {
 
     private ConfigManager config;
     private ClientManager<ConfigManager> clients;
-    private TestService service;
     private PorterEndpoint endpoint;
 
     @Before
@@ -58,8 +59,10 @@ public class PorterWireRoundTripTest {
         HandlerUtil.setMainHandler(mock(Handler.class));
         config = mock(ConfigManager.class);
         clients = new ClientManager<>(config);
-        service = newService(clients, new TestUserServiceManager(), config);
-        endpoint = new PorterEndpoint(service, uid -> Collections.singletonList(PACKAGE));
+        endpoint = new PorterEndpoint(
+                newCore(clients, new TestUserServiceManager(), config, new TestPolicy(),
+                        uid -> Collections.singletonList(PACKAGE)),
+                mock(ManagerOperations.class));
 
         ShadowBinder.setCallingUid(CLIENT_UID);
         ShadowBinder.setCallingPid(CLIENT_PID);
@@ -79,7 +82,7 @@ public class PorterWireRoundTripTest {
 
         assertTrue(Porter.pingBinder());
         assertEquals(OsUtils.getUid(), Porter.getUid());
-        assertEquals(1, Porter.getServerProtocolVersion());
+        assertEquals(PorterProtocol.VERSION, Porter.getServerProtocolVersion());
         assertEquals(PackageManager.PERMISSION_GRANTED, Porter.checkSelfPermission());
     }
 

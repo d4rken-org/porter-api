@@ -23,7 +23,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 import static rikka.shizuku.server.ServerTestSupport.application;
 import static rikka.shizuku.server.ServerTestSupport.entry;
-import static rikka.shizuku.server.ServerTestSupport.newService;
+import static rikka.shizuku.server.ServerTestSupport.newCore;
 
 import android.os.Bundle;
 import android.os.Handler;
@@ -44,12 +44,14 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 import eu.darken.porter.core.CallerIdentity;
 import eu.darken.porter.core.ClientCallback;
+import eu.darken.porter.core.ManagerOperations;
+import eu.darken.porter.core.ServerPolicy;
 import eu.darken.porter.protocol.PorterProtocol;
 import eu.darken.porter.server.IPorterApplication;
 import rikka.shizuku.server.ClientManager;
 import rikka.shizuku.server.ClientRecord;
 import rikka.shizuku.server.ConfigManager;
-import rikka.shizuku.server.ServerTestSupport.TestService;
+import rikka.shizuku.server.ServerTestSupport.TestPolicy;
 import rikka.shizuku.server.ServerTestSupport.TestUserServiceManager;
 import rikka.shizuku.server.util.HandlerUtil;
 import rikka.shizuku.server.util.OsUtils;
@@ -67,7 +69,7 @@ public class PorterEndpointAttachTest {
 
     private ConfigManager config;
     private ClientManager<ConfigManager> clients;
-    private TestService service;
+    private TestPolicy policy;
     private PorterEndpoint endpoint;
 
     @Before
@@ -75,8 +77,8 @@ public class PorterEndpointAttachTest {
         HandlerUtil.setMainHandler(mock(Handler.class));
         config = mock(ConfigManager.class);
         clients = new ClientManager<>(config);
-        service = newService(clients, new TestUserServiceManager(), config);
-        endpoint = endpointOwning(service, PACKAGE, OTHER_PACKAGE);
+        policy = new TestPolicy();
+        endpoint = endpointOwning(clients, policy, PACKAGE, OTHER_PACKAGE);
 
         ShadowBinder.setCallingUid(CLIENT_UID);
         ShadowBinder.setCallingPid(CLIENT_PID);
@@ -87,9 +89,12 @@ public class PorterEndpointAttachTest {
         ShadowBinder.reset();
     }
 
-    private static PorterEndpoint endpointOwning(TestService service, String... packages) {
+    private PorterEndpoint endpointOwning(
+            ClientManager<ConfigManager> clientManager, ServerPolicy serverPolicy, String... packages) {
         List<String> owned = Arrays.asList(packages);
-        return new PorterEndpoint(service, uid -> owned);
+        return new PorterEndpoint(
+                newCore(clientManager, new TestUserServiceManager(), config, serverPolicy, uid -> owned),
+                mock(ManagerOperations.class));
     }
 
     private static IPorterApplication porterApplication(IBinder binder) {
@@ -122,7 +127,7 @@ public class PorterEndpointAttachTest {
         assertTrue(reply.containsKey(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE));
         assertTrue(reply.containsKey(REPLY_CAPABILITIES));
 
-        assertEquals(1, reply.getInt(REPLY_PROTOCOL_VERSION));
+        assertEquals(PorterProtocol.VERSION, reply.getInt(REPLY_PROTOCOL_VERSION));
         assertEquals(OsUtils.getUid(), reply.getInt(REPLY_SERVER_UID));
         assertEquals(OsUtils.getSELinuxContext(), reply.getString(REPLY_SERVER_SECONTEXT));
         assertFalse(reply.getBoolean(REPLY_PERMISSION_GRANTED));
@@ -132,7 +137,7 @@ public class PorterEndpointAttachTest {
 
     @Test
     public void aPackageThatDoesNotBelongToTheCallerIsRefused() {
-        PorterEndpoint foreign = endpointOwning(service, OTHER_PACKAGE);
+        PorterEndpoint foreign = endpointOwning(clients, policy, OTHER_PACKAGE);
 
         assertThrows(SecurityException.class,
                 () -> foreign.attach(porterApplication(mock(IBinder.class)), attachArgs(PACKAGE)));
@@ -147,7 +152,7 @@ public class PorterEndpointAttachTest {
 
         Bundle reply = endpoint.attach(porterApplication(mock(IBinder.class)), attachArgs(PACKAGE));
 
-        assertEquals(1, reply.getInt(REPLY_PROTOCOL_VERSION));
+        assertEquals(PorterProtocol.VERSION, reply.getInt(REPLY_PROTOCOL_VERSION));
         assertEquals(1, clients.findClients(CLIENT_UID).size());
         assertSame(first, clients.findClient(CLIENT_UID, CLIENT_PID));
     }
@@ -211,9 +216,8 @@ public class PorterEndpointAttachTest {
     @Test
     public void theFindAndAttachPairRunsUnderTheClientManagerMonitor() {
         LockRecordingClientManager recording = new LockRecordingClientManager(config);
-        TestService recordingService = newService(recording, new TestUserServiceManager(), config);
 
-        endpointOwning(recordingService, PACKAGE)
+        endpointOwning(recording, policy, PACKAGE)
                 .attach(porterApplication(mock(IBinder.class)), attachArgs(PACKAGE));
 
         assertTrue(recording.lockHeldOnAttach.get());
