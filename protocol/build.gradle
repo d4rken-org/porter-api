@@ -1,0 +1,20 @@
+plugins {
+    id("com.android.library")
+}
+
+android {
+    namespace = "eu.darken.porter.protocol"
+    buildFeatures {
+        buildConfig = false
+        aidl = true
+    }
+    buildTypes {
+        release {
+            minifyEnabled = false
+        }
+    }
+}
+
+dependencies {
+    implementation "androidx.annotation:annotation:1.3.0"
+}
