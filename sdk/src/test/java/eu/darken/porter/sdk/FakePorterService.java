@@ -3,6 +3,7 @@ package eu.darken.porter.sdk;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.RemoteException;
 
 import eu.darken.porter.server.IPorterApplication;
 import eu.darken.porter.server.IPorterRemoteProcess;
@@ -17,6 +18,10 @@ class FakePorterService extends IPorterService.Stub {
     int attachCount;
     Bundle attachArgs;
     IPorterApplication application;
+
+    /** Pushed to the client from inside a call, before that call answers. */
+    Bundle attachTimePermissionPush;
+    Bundle checkTimePermissionPush;
 
     /** Unknown until a test says otherwise, so a value kept from a previous reply stands out. */
     int uid = -1;
@@ -47,7 +52,18 @@ class FakePorterService extends IPorterService.Stub {
         if (attachFailure != null) {
             throw attachFailure;
         }
+        if (attachTimePermissionPush != null) {
+            pushPermissionState(attachTimePermissionPush);
+        }
         return attachReply;
+    }
+
+    private void pushPermissionState(Bundle state) {
+        try {
+            application.dispatchPermissionStateChanged(state);
+        } catch (RemoteException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
@@ -99,6 +115,11 @@ class FakePorterService extends IPorterService.Stub {
     @Override
     public boolean checkSelfPermission() {
         selfPermissionQueries++;
+        if (checkTimePermissionPush != null) {
+            Bundle state = checkTimePermissionPush;
+            checkTimePermissionPush = null;
+            pushPermissionState(state);
+        }
         return selfPermission;
     }
 
