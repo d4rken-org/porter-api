@@ -160,13 +160,17 @@ final class PorterSession {
 
     /** Gives up on this session without disturbing the connection that has replaced it. */
     private void abandon() {
+        PorterSession retained;
         synchronized (SESSION_LOCK) {
             if (current == this) current = null;
             // Fall back to the published connection rather than to nothing: a newcomer that failed
             // must not silence the one that is still serving calls.
             if (latest == this) latest = current;
+            retained = current;
         }
         unlink();
+        // Whoever asked about the connection while this one was attaching was told there was none.
+        if (retained != null) Porter.scheduleStickyCatchUp(retained);
     }
 
     private static void dropCurrent() {
@@ -258,6 +262,11 @@ final class PorterSession {
     /** The caller holds the listener monitor. */
     void markReady() {
         ready = true;
+    }
+
+    /** The caller holds the listener monitor. */
+    boolean isReady() {
+        return ready;
     }
 
     boolean isCurrent() {
