@@ -71,6 +71,8 @@ final class PorterSession {
     private int permissionStateGeneration = 0;
 
     private final IBinder.DeathRecipient deathRecipient = this::onBinderDied;
+    /** Whether {@link #deathRecipient} is registered on {@link #binder}. Guarded by SESSION_LOCK. */
+    private boolean linked = false;
 
     private final IPorterApplication application = new IPorterApplication.Stub() {
 
@@ -188,13 +190,24 @@ final class PorterSession {
     private void link() {
         try {
             binder.linkToDeath(deathRecipient, 0);
+            synchronized (SESSION_LOCK) {
+                linked = true;
+            }
         } catch (Throwable e) {
             Log.i(TAG, "linkToDeath");
         }
     }
 
+    /**
+     * Unlinks at most once: several paths give up on a session, and a binder in another process
+     * throws when it is unlinked from a recipient it does not hold.
+     */
     private void unlink() {
-        binder.unlinkToDeath(deathRecipient, 0);
+        synchronized (SESSION_LOCK) {
+            if (!linked) return;
+            linked = false;
+            binder.unlinkToDeath(deathRecipient, 0);
+        }
     }
 
     @Nullable
