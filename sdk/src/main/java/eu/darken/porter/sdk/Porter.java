@@ -4,6 +4,7 @@ import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
 import static eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE;
 
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
@@ -21,6 +22,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
+import eu.darken.porter.protocol.PorterProtocol;
 import eu.darken.porter.server.IPorterService;
 
 /** The app-facing entry point: the binder Porter delivered, and everything reachable through it. */
@@ -238,6 +240,44 @@ public final class Porter {
      */
     public static boolean pingBinder() {
         return PorterSession.pingCurrent();
+    }
+
+    /** How far away Porter is, from a binder in hand to nothing installed at all. */
+    public enum Availability {
+        /** No installed package declares the Porter permission. */
+        NOT_INSTALLED,
+        /** The permission belongs to a package this SDK does not recognize as the manager. */
+        INSTALLED_UNRECOGNIZED,
+        /** The manager is installed; this process has no binder from it. */
+        INSTALLED_NOT_CONNECTED,
+        /** A binder is held and answers. */
+        CONNECTED
+    }
+
+    /**
+     * Whether a Porter manager is installed, which is not whether its service is running: only
+     * {@link Availability#CONNECTED} says a binder answered.
+     *
+     * <p>{@link Availability#INSTALLED_UNRECOGNIZED} means another package declares the permission.
+     * Do not name or launch that package without your own verification.
+     */
+    @NonNull
+    public static Availability getAvailability(@NonNull Context context) {
+        if (pingBinder()) return Availability.CONNECTED;
+
+        String owner;
+        try {
+            owner = context.getPackageManager()
+                    .getPermissionInfo(PorterProtocol.PERMISSION, 0).packageName;
+        } catch (PackageManager.NameNotFoundException e) {
+            owner = null;
+        }
+
+        if (owner == null) return Availability.NOT_INSTALLED;
+        if (!PorterProtocol.MANAGER_APPLICATION_ID.equals(owner)) {
+            return Availability.INSTALLED_UNRECOGNIZED;
+        }
+        return Availability.INSTALLED_NOT_CONNECTED;
     }
 
     /**
