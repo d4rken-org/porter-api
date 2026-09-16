@@ -187,6 +187,7 @@ final class PorterSession {
 
     private void onBinderDied() {
         boolean wasCurrent;
+        PorterSession retained = null;
         synchronized (SESSION_LOCK) {
             // The notification names no binder, so only the connection it was linked for may act on
             // it. One for a binder that has already been replaced tears nothing down.
@@ -194,9 +195,14 @@ final class PorterSession {
             if (wasCurrent) current = null;
             // A session that died while it was still attaching has nothing to publish any more, and
             // falls back to the connection that is serving, which may be one that outlives it.
-            if (latest == this) latest = current;
+            if (latest == this) {
+                latest = current;
+                retained = current;
+            }
         }
         if (wasCurrent) Porter.scheduleBinderDeadListeners();
+        // Whoever asked about the connection while this one was attaching was told there was none.
+        if (retained != null) Porter.scheduleStickyCatchUp(retained);
     }
 
     private void link() {
