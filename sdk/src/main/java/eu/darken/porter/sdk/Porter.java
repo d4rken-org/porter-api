@@ -161,6 +161,9 @@ public final class Porter {
     static void scheduleBinderReceivedListeners(@NonNull PorterSession session) {
         List<ListenerHolder<OnBinderReceivedListener>> listeners;
         synchronized (RECEIVED_LISTENERS) {
+            // The connection can die between publishing itself and getting here. There is then no
+            // binder to announce: a listener asking for one inside the callback would be refused.
+            if (!session.isCurrent()) return;
             session.markReady();
             listeners = new ArrayList<>(RECEIVED_LISTENERS);
             // Everything still registered is in this copy, so nothing is left waiting to be told.
