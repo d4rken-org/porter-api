@@ -1,29 +1,10 @@
 package eu.darken.porter.sdk;
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
-import static eu.darken.porter.protocol.PorterProtocol.ATTACH_PACKAGE_NAME;
-import static eu.darken.porter.protocol.PorterProtocol.ATTACH_PROTOCOL_VERSION;
 import static eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE;
-import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_CONFIRMATION_ALLOWED;
-import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_CONFIRMATION_ONETIME;
 import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_RESULT_ALLOWED;
-import static eu.darken.porter.protocol.PorterProtocol.REPLY_CAPABILITIES;
 import static eu.darken.porter.protocol.PorterProtocol.REPLY_PERMISSION_GRANTED;
-import static eu.darken.porter.protocol.PorterProtocol.REPLY_PROTOCOL_VERSION;
-import static eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_SECONTEXT;
-import static eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_UID;
 import static eu.darken.porter.protocol.PorterProtocol.REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE;
-import static eu.darken.porter.protocol.PorterProtocol.TRANSACTION_transactRemote;
-import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_COMPONENT;
-import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_DAEMON;
-import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_DEBUGGABLE;
-import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_NO_CREATE;
-import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_PROCESS_NAME_SUFFIX;
-import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_REMOVE;
-import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TAG;
-import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TOKEN;
-import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_USE_32_BIT;
-import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_VERSION_CODE;
 
 import android.content.ComponentName;
 import android.content.ServiceConnection;
@@ -45,7 +26,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import eu.darken.porter.protocol.PorterProtocol;
 import eu.darken.porter.server.IPorterApplication;
 import eu.darken.porter.server.IPorterService;
 
@@ -132,7 +112,7 @@ public final class Porter {
                 binder.unlinkToDeath(DEATH_RECIPIENT, 0);
             }
             binder = newBinder;
-            service = IPorterService.Stub.asInterface(newBinder);
+            service = PorterWire.asService(newBinder);
 
             try {
                 binder.linkToDeath(DEATH_RECIPIENT, 0);
@@ -141,11 +121,7 @@ public final class Porter {
             }
 
             try {
-                Bundle args = new Bundle();
-                args.putString(ATTACH_PACKAGE_NAME, packageName);
-                args.putInt(ATTACH_PROTOCOL_VERSION, PorterProtocol.VERSION);
-
-                Bundle reply = service.attach(APPLICATION, args);
+                PorterWire.AttachReply reply = PorterWire.attach(service, APPLICATION, packageName);
 
                 // Reset first and read with the same values as defaults, so a reply that leaves a
                 // key out reports a defined value rather than the previous connection's.
@@ -155,20 +131,18 @@ public final class Porter {
                 serverCapabilities = CAPABILITIES_NONE;
 
                 if (reply != null) {
-                    serverUid = reply.getInt(REPLY_SERVER_UID, -1);
-                    serverProtocolVersion = reply.getInt(REPLY_PROTOCOL_VERSION, 0);
-                    serverContext = reply.getString(REPLY_SERVER_SECONTEXT);
-                    serverCapabilities = reply.getLong(REPLY_CAPABILITIES, CAPABILITIES_NONE);
+                    serverUid = reply.serverUid;
+                    serverProtocolVersion = reply.protocolVersion;
+                    serverContext = reply.seLinuxContext;
+                    serverCapabilities = reply.capabilities;
 
-                    boolean granted = reply.getBoolean(REPLY_PERMISSION_GRANTED, false);
-                    boolean rationale =
-                            reply.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false);
                     synchronized (PERMISSION_LOCK) {
                         // The server registers the client before it answers, so a state push can
                         // already have overtaken this reply. It then describes the newer state.
                         if (permissionStateGeneration == permissionGeneration) {
-                            permissionGranted = granted;
-                            shouldShowRequestPermissionRationale = rationale;
+                            permissionGranted = reply.permissionGranted;
+                            shouldShowRequestPermissionRationale =
+                                    reply.shouldShowRequestPermissionRationale;
                         }
                     }
                 }
@@ -399,21 +373,13 @@ public final class Porter {
         return binder != null && binder.pingBinder();
     }
 
-    private static RuntimeException rethrowAsRuntimeException(RemoteException e) {
-        return new RuntimeException(e);
-    }
-
     /**
      * Calls {@link IBinder#transact(int, Parcel, Parcel, int)} in the Porter server.
      *
      * @see PorterBinderWrapper
      */
     public static void transactRemote(@NonNull Parcel data, @Nullable Parcel reply, int flags) {
-        try {
-            requireService().asBinder().transact(TRANSACTION_transactRemote, data, reply, flags);
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        PorterWire.transactRemote(requireService(), data, reply, flags);
     }
 
     /**
@@ -424,11 +390,7 @@ public final class Porter {
     @NonNull
     public static PorterRemoteProcess newProcess(
             @NonNull String[] cmd, @Nullable String[] env, @Nullable String dir) {
-        try {
-            return new PorterRemoteProcess(requireService().newProcess(cmd, env, dir));
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        return new PorterRemoteProcess(PorterWire.newProcess(requireService(), cmd, env, dir));
     }
 
     /**
@@ -437,11 +399,7 @@ public final class Porter {
      */
     public static int getUid() {
         if (serverUid != -1) return serverUid;
-        try {
-            serverUid = requireService().getUid();
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        serverUid = PorterWire.getUid(requireService());
         return serverUid;
     }
 
@@ -461,11 +419,7 @@ public final class Porter {
      */
     public static String getSELinuxContext() {
         if (serverContext != null) return serverContext;
-        try {
-            serverContext = requireService().getSELinuxContext();
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        serverContext = PorterWire.getSELinuxContext(requireService());
         return serverContext;
     }
 
@@ -524,28 +478,11 @@ public final class Porter {
         }
 
         public Bundle forAdd() {
-            Bundle args = new Bundle();
-            args.putParcelable(USER_SERVICE_COMPONENT, componentName);
-            args.putBoolean(USER_SERVICE_DEBUGGABLE, debuggable);
-            args.putInt(USER_SERVICE_VERSION_CODE, versionCode);
-            args.putBoolean(USER_SERVICE_DAEMON, daemon);
-            args.putBoolean(USER_SERVICE_USE_32_BIT, use32BitAppProcess);
-            args.putString(USER_SERVICE_PROCESS_NAME_SUFFIX,
-                    Objects.requireNonNull(processName, "process name suffix must not be null"));
-            if (tag != null) {
-                args.putString(USER_SERVICE_TAG, tag);
-            }
-            return args;
+            return PorterWire.encodeUserService(this);
         }
 
         public Bundle forRemove(boolean remove) {
-            Bundle args = new Bundle();
-            args.putParcelable(USER_SERVICE_COMPONENT, componentName);
-            if (tag != null) {
-                args.putString(USER_SERVICE_TAG, tag);
-            }
-            args.putBoolean(USER_SERVICE_REMOVE, remove);
-            return args;
+            return PorterWire.encodeUserServiceRemoval(this, remove);
         }
     }
 
@@ -564,11 +501,7 @@ public final class Porter {
     public static void bindUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnection connection = PorterServiceConnections.get(args);
         connection.addConnection(conn);
-        try {
-            requireService().addUserService(connection, args.forAdd());
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        PorterWire.addUserService(requireService(), connection, args.forAdd());
     }
 
     /**
@@ -579,13 +512,8 @@ public final class Porter {
     public static int peekUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnection connection = PorterServiceConnections.get(args);
         connection.addConnection(conn);
-        try {
-            Bundle bundle = args.forAdd();
-            bundle.putBoolean(USER_SERVICE_NO_CREATE, true);
-            return requireService().addUserService(connection, bundle);
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        return PorterWire.addUserService(
+                requireService(), connection, PorterWire.withoutCreation(args.forAdd()));
     }
 
     /**
@@ -595,11 +523,7 @@ public final class Porter {
     public static void unbindUserService(
             @NonNull UserServiceArgs args, @Nullable ServiceConnection conn, boolean remove) {
         if (remove) {
-            try {
-                requireService().removeUserService(null /* (unused) */, args.forRemove(true));
-            } catch (RemoteException e) {
-                throw rethrowAsRuntimeException(e);
-            }
+            PorterWire.removeUserService(requireService(), null /* (unused) */, args.forRemove(true));
             return;
         }
 
@@ -609,11 +533,7 @@ public final class Porter {
          * on the server first, then locally.
          */
         PorterServiceConnection connection = PorterServiceConnections.get(args);
-        try {
-            requireService().removeUserService(connection, args.forRemove(false));
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        PorterWire.removeUserService(requireService(), connection, args.forRemove(false));
         connection.clearConnections();
         PorterServiceConnections.remove(connection);
     }
@@ -625,27 +545,15 @@ public final class Porter {
      */
     public static int checkRemotePermission(String permission) {
         if (serverUid == 0) return PackageManager.PERMISSION_GRANTED;
-        try {
-            return requireService().checkPermission(permission);
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        return PorterWire.checkPermission(requireService(), permission);
     }
 
     public static String getSystemProperty(String name, String defaultValue) {
-        try {
-            return requireService().getSystemProperty(name, defaultValue);
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        return PorterWire.getSystemProperty(requireService(), name, defaultValue);
     }
 
     public static void setSystemProperty(String name, String value) {
-        try {
-            requireService().setSystemProperty(name, value);
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        PorterWire.setSystemProperty(requireService(), name, value);
     }
 
     /**
@@ -656,11 +564,7 @@ public final class Porter {
      * @see #addRequestPermissionResultListener(OnRequestPermissionResultListener)
      */
     public static void requestPermission(int requestCode) {
-        try {
-            requireService().requestPermission(requestCode);
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        PorterWire.requestPermission(requireService(), requestCode);
     }
 
     /**
@@ -672,12 +576,7 @@ public final class Porter {
             if (permissionGranted) return PackageManager.PERMISSION_GRANTED;
             generation = permissionStateGeneration;
         }
-        boolean granted;
-        try {
-            granted = requireService().checkSelfPermission();
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        boolean granted = PorterWire.checkSelfPermission(requireService());
         synchronized (PERMISSION_LOCK) {
             if (permissionStateGeneration == generation) {
                 permissionGranted = granted;
@@ -696,12 +595,7 @@ public final class Porter {
             if (shouldShowRequestPermissionRationale) return true;
             generation = permissionStateGeneration;
         }
-        boolean rationale;
-        try {
-            rationale = requireService().shouldShowRequestPermissionRationale();
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        boolean rationale = PorterWire.shouldShowRequestPermissionRationale(requireService());
         synchronized (PERMISSION_LOCK) {
             if (permissionStateGeneration == generation) {
                 shouldShowRequestPermissionRationale = rationale;
@@ -716,53 +610,29 @@ public final class Porter {
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void exit() {
-        try {
-            requireService().exit();
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        PorterWire.exit(requireService());
     }
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void attachUserService(@NonNull IBinder binder, @NonNull String token) {
-        Bundle args = new Bundle();
-        args.putString(USER_SERVICE_TOKEN, token);
-        try {
-            requireService().attachUserService(binder, args);
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        PorterWire.attachUserService(requireService(), binder, token);
     }
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void dispatchPermissionConfirmationResult(
             int requestUid, int requestPid, int requestCode, boolean allowed, boolean onetime) {
-        Bundle data = new Bundle();
-        data.putBoolean(PERMISSION_CONFIRMATION_ALLOWED, allowed);
-        data.putBoolean(PERMISSION_CONFIRMATION_ONETIME, onetime);
-        try {
-            requireService().dispatchPermissionConfirmationResult(requestUid, requestPid, requestCode, data);
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        PorterWire.dispatchPermissionConfirmationResult(
+                requireService(), requestUid, requestPid, requestCode, allowed, onetime);
     }
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static int getFlagsForUid(int uid, int mask) {
-        try {
-            return requireService().getFlagsForUid(uid, mask);
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        return PorterWire.getFlagsForUid(requireService(), uid, mask);
     }
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void updateFlagsForUid(int uid, int mask, int value) {
-        try {
-            requireService().updateFlagsForUid(uid, mask, value);
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
+        PorterWire.updateFlagsForUid(requireService(), uid, mask, value);
     }
 
     /** Drops the connection and every listener, so one test cannot see another's state. */
