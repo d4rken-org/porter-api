@@ -116,7 +116,9 @@ final class PorterSession {
         PorterSession session;
         synchronized (SESSION_LOCK) {
             // The same binder delivered twice is the same connection. Attaching again would ask the
-            // server for a second grant for it and link a second death recipient.
+            // server for a second grant for it, link a second death recipient, and supersede a
+            // replacement that is attaching, so the published connection counts as well as latest.
+            if (current != null && current.binder == newBinder) return;
             if (latest != null && latest.binder == newBinder) return;
 
             session = new PorterSession(++connections, newBinder);
