@@ -118,11 +118,9 @@ final class PorterSession {
             // server for a second grant for it and link a second death recipient.
             if (latest != null && latest.binder == newBinder) return;
 
-            PorterSession replaced = latest;
             session = new PorterSession(++connections, newBinder);
             latest = session;
             session.link();
-            if (replaced != null) replaced.unlink();
         }
 
         try {
@@ -134,7 +132,14 @@ final class PorterSession {
             boolean superseded;
             synchronized (SESSION_LOCK) {
                 superseded = latest != session;
-                if (!superseded) current = session;
+                if (!superseded) {
+                    // The connection that is handing over stays watched until this one takes over,
+                    // and both steps happen under the one lock: a death callback never sees a
+                    // connection nobody watches, and an unlink that throws publishes nothing.
+                    PorterSession previous = current;
+                    if (previous != null && previous != session) previous.unlink();
+                    current = session;
+                }
             }
             if (superseded) {
                 // A newer binder arrived while this one was attaching, and owns the connection now.
