@@ -544,6 +544,19 @@ public final class Porter {
         PorterWire.updateFlagsForUid(requireService(), uid, mask, value);
     }
 
+    /**
+     * Whether the connection Porter answers for has already told the received listeners about
+     * itself. Read-only on purpose: {@link #resetForTest()} is what a test uses to get back to a
+     * process with no connection and no listeners.
+     */
+    @VisibleForTesting
+    public static boolean isBinderReadyForTest() {
+        synchronized (RECEIVED_LISTENERS) {
+            PorterSession session = PorterSession.current();
+            return session != null && session.isReady();
+        }
+    }
+
     /** Drops the connection and every listener, so one test cannot see another's state. */
     @VisibleForTesting
     public static void resetForTest() {
