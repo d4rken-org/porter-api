@@ -79,6 +79,11 @@ public final class Porter {
     }
 
     private static final List<ListenerHolder<OnBinderReceivedListener>> RECEIVED_LISTENERS = new ArrayList<>();
+    /**
+     * The sticky listeners that read not-ready when they registered and have not been told since.
+     * Guarded by the listener monitor, which is {@link #RECEIVED_LISTENERS}.
+     */
+    private static final List<ListenerHolder<OnBinderReceivedListener>> PENDING_STICKY = new ArrayList<>();
     private static final List<ListenerHolder<OnBinderDeadListener>> DEAD_LISTENERS = new ArrayList<>();
     private static final List<ListenerHolder<OnRequestPermissionResultListener>> PERMISSION_LISTENERS = new ArrayList<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
@@ -124,10 +129,14 @@ public final class Porter {
 
     private static void addBinderReceivedListener(
             @NonNull OnBinderReceivedListener listener, boolean sticky, @Nullable Handler handler) {
+        ListenerHolder<OnBinderReceivedListener> holder = new ListenerHolder<>(listener, handler);
         boolean ready;
         synchronized (RECEIVED_LISTENERS) {
-            RECEIVED_LISTENERS.add(new ListenerHolder<>(listener, handler));
+            RECEIVED_LISTENERS.add(holder);
             ready = PorterSession.latestIsReady();
+            // Not ready can mean a replacement is attaching over a connection that is ready and
+            // answering. Nothing tells this listener about that one unless the replacement fails.
+            if (sticky && !ready) PENDING_STICKY.add(holder);
         }
         if (sticky && ready) {
             deliver(handler, listener::onBinderReceived);
@@ -136,6 +145,7 @@ public final class Porter {
 
     public static boolean removeBinderReceivedListener(@NonNull OnBinderReceivedListener listener) {
         synchronized (RECEIVED_LISTENERS) {
+            PENDING_STICKY.removeIf(holder -> holder.listener == listener);
             return RECEIVED_LISTENERS.removeIf(holder -> holder.listener == listener);
         }
     }
@@ -153,6 +163,25 @@ public final class Porter {
         synchronized (RECEIVED_LISTENERS) {
             session.markReady();
             listeners = new ArrayList<>(RECEIVED_LISTENERS);
+            // Everything still registered is in this copy, so nothing is left waiting to be told.
+            PENDING_STICKY.clear();
+        }
+        for (ListenerHolder<OnBinderReceivedListener> holder : listeners) {
+            deliver(holder.handler, holder.listener::onBinderReceived);
+        }
+    }
+
+    /**
+     * Tells the sticky listeners that read not-ready while {@code retained} was being replaced,
+     * now that the replacement is gone and {@code retained} is the connection again. Its readiness
+     * is left alone: it announced itself once and is not announcing itself again to anyone else.
+     */
+    static void scheduleStickyCatchUp(@NonNull PorterSession retained) {
+        List<ListenerHolder<OnBinderReceivedListener>> listeners;
+        synchronized (RECEIVED_LISTENERS) {
+            if (!retained.isReady()) return;
+            listeners = new ArrayList<>(PENDING_STICKY);
+            PENDING_STICKY.clear();
         }
         for (ListenerHolder<OnBinderReceivedListener> holder : listeners) {
             deliver(holder.handler, holder.listener::onBinderReceived);
@@ -521,6 +550,7 @@ public final class Porter {
         PorterSession.resetForTest();
         synchronized (RECEIVED_LISTENERS) {
             RECEIVED_LISTENERS.clear();
+            PENDING_STICKY.clear();
             DEAD_LISTENERS.clear();
             PERMISSION_LISTENERS.clear();
         }
