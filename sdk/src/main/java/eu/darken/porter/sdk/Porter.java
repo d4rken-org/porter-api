@@ -214,6 +214,17 @@ public final class Porter {
     private static final List<ListenerHolder<OnRequestPermissionResultListener>> PERMISSION_LISTENERS = new ArrayList<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
 
+    /** Runs {@code delivery} on {@code handler}, or on the main thread when there is none. */
+    private static void deliver(@Nullable Handler handler, @NonNull Runnable delivery) {
+        if (handler != null) {
+            handler.post(delivery);
+        } else if (Looper.myLooper() == Looper.getMainLooper()) {
+            delivery.run();
+        } else {
+            MAIN_HANDLER.post(delivery);
+        }
+    }
+
     /**
      * The listener is called every time a binder arrives, which happens again whenever the user
      * restarts Porter while the app is running.
@@ -264,19 +275,17 @@ public final class Porter {
         }
     }
 
+    /**
+     * A listener is free to add or remove one from inside its own callback, so the dispatch walks a
+     * copy with the monitor released rather than the list a callback can still reach.
+     */
     private static void scheduleBinderReceivedListeners() {
+        List<ListenerHolder<OnBinderReceivedListener>> listeners;
         synchronized (RECEIVED_LISTENERS) {
-            for (ListenerHolder<OnBinderReceivedListener> holder : RECEIVED_LISTENERS) {
-                if (holder.handler != null) {
-                    holder.handler.post(holder.listener::onBinderReceived);
-                } else {
-                    if (Looper.myLooper() == Looper.getMainLooper()) {
-                        holder.listener.onBinderReceived();
-                    } else {
-                        MAIN_HANDLER.post(holder.listener::onBinderReceived);
-                    }
-                }
-            }
+            listeners = new ArrayList<>(RECEIVED_LISTENERS);
+        }
+        for (ListenerHolder<OnBinderReceivedListener> holder : listeners) {
+            deliver(holder.handler, holder.listener::onBinderReceived);
         }
         binderReady = true;
     }
@@ -299,18 +308,12 @@ public final class Porter {
     }
 
     private static void scheduleBinderDeadListeners() {
+        List<ListenerHolder<OnBinderDeadListener>> listeners;
         synchronized (RECEIVED_LISTENERS) {
-            for (ListenerHolder<OnBinderDeadListener> holder : DEAD_LISTENERS) {
-                if (holder.handler != null) {
-                    holder.handler.post(holder.listener::onBinderDead);
-                } else {
-                    if (Looper.myLooper() == Looper.getMainLooper()) {
-                        holder.listener.onBinderDead();
-                    } else {
-                        MAIN_HANDLER.post(holder.listener::onBinderDead);
-                    }
-                }
-            }
+            listeners = new ArrayList<>(DEAD_LISTENERS);
+        }
+        for (ListenerHolder<OnBinderDeadListener> holder : listeners) {
+            deliver(holder.handler, holder.listener::onBinderDead);
         }
     }
 
@@ -334,18 +337,12 @@ public final class Porter {
     }
 
     private static void scheduleRequestPermissionResultListener(int requestCode, int result) {
+        List<ListenerHolder<OnRequestPermissionResultListener>> listeners;
         synchronized (RECEIVED_LISTENERS) {
-            for (ListenerHolder<OnRequestPermissionResultListener> holder : PERMISSION_LISTENERS) {
-                if (holder.handler != null) {
-                    holder.handler.post(() -> holder.listener.onRequestPermissionResult(requestCode, result));
-                } else {
-                    if (Looper.myLooper() == Looper.getMainLooper()) {
-                        holder.listener.onRequestPermissionResult(requestCode, result);
-                    } else {
-                        MAIN_HANDLER.post(() -> holder.listener.onRequestPermissionResult(requestCode, result));
-                    }
-                }
-            }
+            listeners = new ArrayList<>(PERMISSION_LISTENERS);
+        }
+        for (ListenerHolder<OnRequestPermissionResultListener> holder : listeners) {
+            deliver(holder.handler, () -> holder.listener.onRequestPermissionResult(requestCode, result));
         }
     }
 
