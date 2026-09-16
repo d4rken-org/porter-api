@@ -2,9 +2,6 @@ package eu.darken.porter.sdk;
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
 import static eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE;
-import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_RESULT_ALLOWED;
-import static eu.darken.porter.protocol.PorterProtocol.REPLY_PERMISSION_GRANTED;
-import static eu.darken.porter.protocol.PorterProtocol.REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE;
 
 import android.content.ComponentName;
 import android.content.ServiceConnection;
@@ -14,8 +11,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.os.Parcel;
-import android.os.RemoteException;
-import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
@@ -26,145 +21,17 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-import eu.darken.porter.server.IPorterApplication;
 import eu.darken.porter.server.IPorterService;
 
 /** The app-facing entry point: the binder Porter delivered, and everything reachable through it. */
 public final class Porter {
 
-    private static final String TAG = "Porter";
-
     private Porter() {
     }
 
-    private static IBinder binder;
-    private static IPorterService service;
-
-    private static int serverUid = -1;
-    private static int serverProtocolVersion = 0;
-    private static String serverContext = null;
-    private static long serverCapabilities = CAPABILITIES_NONE;
-    private static boolean binderReady = false;
-
-    /**
-     * Guards {@link #permissionGranted}, {@link #shouldShowRequestPermissionRationale} and
-     * {@link #permissionStateGeneration}, which the server writes from a binder thread. Never held
-     * across a binder call: acquire it to snapshot, release it for the call, acquire it to apply.
-     */
-    private static final Object PERMISSION_LOCK = new Object();
-
-    private static boolean permissionGranted = false;
-    private static boolean shouldShowRequestPermissionRationale = false;
-    /** Counts the state pushes, so a reply that started before one can tell it lost the race. */
-    private static int permissionStateGeneration = 0;
-
-    private static final IPorterApplication APPLICATION = new IPorterApplication.Stub() {
-
-        @Override
-        public void dispatchRequestPermissionResult(int requestCode, Bundle data) {
-            boolean allowed = data.getBoolean(PERMISSION_RESULT_ALLOWED, false);
-            scheduleRequestPermissionResultListener(requestCode,
-                    allowed ? PackageManager.PERMISSION_GRANTED : PackageManager.PERMISSION_DENIED);
-        }
-
-        @Override
-        public void dispatchPermissionStateChanged(Bundle state) {
-            boolean granted = state.getBoolean(REPLY_PERMISSION_GRANTED, false);
-            boolean rationale = state.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false);
-            synchronized (PERMISSION_LOCK) {
-                permissionGranted = granted;
-                shouldShowRequestPermissionRationale = rationale;
-                permissionStateGeneration++;
-            }
-        }
-    };
-
-    private static final IBinder.DeathRecipient DEATH_RECIPIENT = () -> {
-        binderReady = false;
-        onBinderReceived(null, null);
-    };
-
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void onBinderReceived(@Nullable IBinder newBinder, String packageName) {
-        if (binder == newBinder) return;
-
-        // A grant belongs to the connection that reported it. The attach reply sets it again for a
-        // new binder, so until then checkSelfPermission must not answer for the previous one. The
-        // reset also supplies the defaults for a reply that leaves those keys out.
-        int permissionGeneration;
-        synchronized (PERMISSION_LOCK) {
-            permissionGranted = false;
-            shouldShowRequestPermissionRationale = false;
-            permissionGeneration = permissionStateGeneration;
-        }
-
-        if (newBinder == null) {
-            binder = null;
-            service = null;
-            serverUid = -1;
-            serverProtocolVersion = 0;
-            serverContext = null;
-            serverCapabilities = CAPABILITIES_NONE;
-
-            scheduleBinderDeadListeners();
-        } else {
-            if (binder != null) {
-                binder.unlinkToDeath(DEATH_RECIPIENT, 0);
-            }
-            binder = newBinder;
-            service = PorterWire.asService(newBinder);
-
-            try {
-                binder.linkToDeath(DEATH_RECIPIENT, 0);
-            } catch (Throwable e) {
-                Log.i(TAG, "linkToDeath");
-            }
-
-            try {
-                PorterWire.AttachReply reply = PorterWire.attach(service, APPLICATION, packageName);
-
-                // Reset first and read with the same values as defaults, so a reply that leaves a
-                // key out reports a defined value rather than the previous connection's.
-                serverUid = -1;
-                serverProtocolVersion = 0;
-                serverContext = null;
-                serverCapabilities = CAPABILITIES_NONE;
-
-                if (reply != null) {
-                    serverUid = reply.serverUid;
-                    serverProtocolVersion = reply.protocolVersion;
-                    serverContext = reply.seLinuxContext;
-                    serverCapabilities = reply.capabilities;
-
-                    synchronized (PERMISSION_LOCK) {
-                        // The server registers the client before it answers, so a state push can
-                        // already have overtaken this reply. It then describes the newer state.
-                        if (permissionStateGeneration == permissionGeneration) {
-                            permissionGranted = reply.permissionGranted;
-                            shouldShowRequestPermissionRationale =
-                                    reply.shouldShowRequestPermissionRationale;
-                        }
-                    }
-                }
-
-                Log.i(TAG, "attached");
-                scheduleBinderReceivedListeners();
-            } catch (RemoteException | RuntimeException e) {
-                Log.w(TAG, Log.getStackTraceString(e));
-
-                newBinder.unlinkToDeath(DEATH_RECIPIENT, 0);
-                binder = null;
-                service = null;
-                serverUid = -1;
-                serverProtocolVersion = 0;
-                serverContext = null;
-                serverCapabilities = CAPABILITIES_NONE;
-                synchronized (PERMISSION_LOCK) {
-                    permissionGranted = false;
-                    shouldShowRequestPermissionRationale = false;
-                }
-            }
-        }
+        PorterSession.onBinderReceived(newBinder, packageName);
     }
 
     public interface OnBinderReceivedListener {
@@ -255,17 +122,13 @@ public final class Porter {
 
     private static void addBinderReceivedListener(
             @NonNull OnBinderReceivedListener listener, boolean sticky, @Nullable Handler handler) {
-        if (sticky && binderReady) {
-            if (handler != null) {
-                handler.post(listener::onBinderReceived);
-            } else if (Looper.myLooper() == Looper.getMainLooper()) {
-                listener.onBinderReceived();
-            } else {
-                MAIN_HANDLER.post(listener::onBinderReceived);
-            }
-        }
+        boolean ready;
         synchronized (RECEIVED_LISTENERS) {
             RECEIVED_LISTENERS.add(new ListenerHolder<>(listener, handler));
+            ready = PorterSession.latestIsReady();
+        }
+        if (sticky && ready) {
+            deliver(handler, listener::onBinderReceived);
         }
     }
 
@@ -278,16 +141,20 @@ public final class Porter {
     /**
      * A listener is free to add or remove one from inside its own callback, so the dispatch walks a
      * copy with the monitor released rather than the list a callback can still reach.
+     *
+     * <p>Marking the connection ready and taking that copy in one critical section is what makes a
+     * sticky listener registering during the dispatch called exactly once: it either reads
+     * not-ready and is in the copy, or reads ready and calls itself.
      */
-    private static void scheduleBinderReceivedListeners() {
+    static void scheduleBinderReceivedListeners(@NonNull PorterSession session) {
         List<ListenerHolder<OnBinderReceivedListener>> listeners;
         synchronized (RECEIVED_LISTENERS) {
+            session.markReady();
             listeners = new ArrayList<>(RECEIVED_LISTENERS);
         }
         for (ListenerHolder<OnBinderReceivedListener> holder : listeners) {
             deliver(holder.handler, holder.listener::onBinderReceived);
         }
-        binderReady = true;
     }
 
     public static void addBinderDeadListener(@NonNull OnBinderDeadListener listener) {
@@ -307,7 +174,7 @@ public final class Porter {
         }
     }
 
-    private static void scheduleBinderDeadListeners() {
+    static void scheduleBinderDeadListeners() {
         List<ListenerHolder<OnBinderDeadListener>> listeners;
         synchronized (RECEIVED_LISTENERS) {
             listeners = new ArrayList<>(DEAD_LISTENERS);
@@ -336,28 +203,31 @@ public final class Porter {
         }
     }
 
-    private static void scheduleRequestPermissionResultListener(int requestCode, int result) {
+    static void scheduleRequestPermissionResultListener(
+            @NonNull PorterSession session, int requestCode, int result) {
         List<ListenerHolder<OnRequestPermissionResultListener>> listeners;
         synchronized (RECEIVED_LISTENERS) {
             listeners = new ArrayList<>(PERMISSION_LISTENERS);
         }
         for (ListenerHolder<OnRequestPermissionResultListener> holder : listeners) {
-            deliver(holder.handler, () -> holder.listener.onRequestPermissionResult(requestCode, result));
+            // A result belongs to the connection that asked for it. The check runs where the
+            // callback runs, so one already queued to a Handler is dropped as well.
+            deliver(holder.handler, () -> {
+                if (!session.isLatest()) return;
+                holder.listener.onRequestPermissionResult(requestCode, result);
+            });
         }
     }
 
     @NonNull
     private static IPorterService requireService() {
-        if (service == null) {
-            throw new IllegalStateException("binder haven't been received");
-        }
-        return service;
+        return PorterSession.require().service();
     }
 
     /** Normal apps should not need this. */
     @Nullable
     public static IBinder getBinder() {
-        return binder;
+        return PorterSession.currentBinder();
     }
 
     /**
@@ -367,7 +237,7 @@ public final class Porter {
      * @see #addBinderDeadListener(OnBinderDeadListener)
      */
     public static boolean pingBinder() {
-        return binder != null && binder.pingBinder();
+        return PorterSession.pingCurrent();
     }
 
     /**
@@ -395,19 +265,19 @@ public final class Porter {
      * @throws IllegalStateException if called before a binder is received
      */
     public static int getUid() {
-        if (serverUid != -1) return serverUid;
-        serverUid = PorterWire.getUid(requireService());
-        return serverUid;
+        return PorterSession.require().uid();
     }
 
     /** The protocol version the server reported when this connection attached; 0 if unreported. */
     public static int getServerProtocolVersion() {
-        return serverProtocolVersion;
+        PorterSession session = PorterSession.current();
+        return session == null ? 0 : session.protocolVersion();
     }
 
     /** Bitmask of the optional protocol features the server reported. */
     public static long getServerCapabilities() {
-        return serverCapabilities;
+        PorterSession session = PorterSession.current();
+        return session == null ? CAPABILITIES_NONE : session.capabilities();
     }
 
     /**
@@ -415,9 +285,7 @@ public final class Porter {
      * it depends on the su implementation.
      */
     public static String getSELinuxContext() {
-        if (serverContext != null) return serverContext;
-        serverContext = PorterWire.getSELinuxContext(requireService());
-        return serverContext;
+        return PorterSession.require().seLinuxContext();
     }
 
     public static class UserServiceArgs {
@@ -541,8 +409,9 @@ public final class Porter {
      * @return {@link PackageManager#PERMISSION_GRANTED} or {@link PackageManager#PERMISSION_DENIED}
      */
     public static int checkRemotePermission(String permission) {
-        if (serverUid == 0) return PackageManager.PERMISSION_GRANTED;
-        return PorterWire.checkPermission(requireService(), permission);
+        PorterSession session = PorterSession.require();
+        if (session.reportedUid() == 0) return PackageManager.PERMISSION_GRANTED;
+        return PorterWire.checkPermission(session.service(), permission);
     }
 
     public static String getSystemProperty(String name, String defaultValue) {
@@ -568,39 +437,12 @@ public final class Porter {
      * @return {@link PackageManager#PERMISSION_GRANTED} or {@link PackageManager#PERMISSION_DENIED}
      */
     public static int checkSelfPermission() {
-        int generation;
-        synchronized (PERMISSION_LOCK) {
-            if (permissionGranted) return PackageManager.PERMISSION_GRANTED;
-            generation = permissionStateGeneration;
-        }
-        boolean granted = PorterWire.checkSelfPermission(requireService());
-        synchronized (PERMISSION_LOCK) {
-            if (permissionStateGeneration == generation) {
-                permissionGranted = granted;
-            } else {
-                granted = permissionGranted;
-            }
-            return granted ? PackageManager.PERMISSION_GRANTED : PackageManager.PERMISSION_DENIED;
-        }
+        return PorterSession.require().checkSelfPermission();
     }
 
     /** Whether to show a rationale before {@link #requestPermission(int)}. */
     public static boolean shouldShowRequestPermissionRationale() {
-        int generation;
-        synchronized (PERMISSION_LOCK) {
-            if (permissionGranted) return false;
-            if (shouldShowRequestPermissionRationale) return true;
-            generation = permissionStateGeneration;
-        }
-        boolean rationale = PorterWire.shouldShowRequestPermissionRationale(requireService());
-        synchronized (PERMISSION_LOCK) {
-            if (permissionStateGeneration == generation) {
-                shouldShowRequestPermissionRationale = rationale;
-            } else {
-                rationale = !permissionGranted && shouldShowRequestPermissionRationale;
-            }
-            return rationale;
-        }
+        return PorterSession.require().shouldShowRequestPermissionRationale();
     }
 
     // --------------------- non-app ----------------------
@@ -635,18 +477,7 @@ public final class Porter {
     /** Drops the connection and every listener, so one test cannot see another's state. */
     @VisibleForTesting
     public static void resetForTest() {
-        binder = null;
-        service = null;
-        serverUid = -1;
-        serverProtocolVersion = 0;
-        serverContext = null;
-        serverCapabilities = CAPABILITIES_NONE;
-        synchronized (PERMISSION_LOCK) {
-            permissionGranted = false;
-            shouldShowRequestPermissionRationale = false;
-            permissionStateGeneration = 0;
-        }
-        binderReady = false;
+        PorterSession.resetForTest();
         synchronized (RECEIVED_LISTENERS) {
             RECEIVED_LISTENERS.clear();
             DEAD_LISTENERS.clear();
