@@ -275,6 +275,13 @@ final class PorterSession {
         }
     }
 
+    /** Whether this is the connection Porter answers for, with no replacement attaching over it. */
+    boolean isSoleConnection() {
+        synchronized (SESSION_LOCK) {
+            return current == this && latest == this;
+        }
+    }
+
     @NonNull
     IPorterService service() {
         return service;
