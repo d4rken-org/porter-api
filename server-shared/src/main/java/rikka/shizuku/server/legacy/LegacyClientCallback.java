@@ -31,4 +31,8 @@ public final class LegacyClientCallback implements ClientCallback {
         reply.putBoolean(REQUEST_PERMISSION_REPLY_ALLOWED, allowed);
         application.dispatchRequestPermissionResult(requestCode, reply);
     }
+
+    @Override
+    public void onPermissionStateChanged(boolean granted, boolean shouldShowRationale) {
+    }
 }

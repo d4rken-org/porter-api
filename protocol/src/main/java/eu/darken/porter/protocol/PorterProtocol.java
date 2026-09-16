@@ -13,7 +13,7 @@ public final class PorterProtocol {
      * The protocol version both sides send. Independent of the SDK release version and of
      * {@code ShizukuApiConstants.SERVER_VERSION}.
      */
-    public static final int VERSION = 2;
+    public static final int VERSION = 3;
 
     // Raw codes on DESCRIPTOR, outside the range the AIDL ids occupy.
     public static final int TRANSACTION_transactRemote = 100;

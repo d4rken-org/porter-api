@@ -166,11 +166,11 @@ public class PorterEndpointManagerOperationsTest {
         when(application.asBinder()).thenReturn(mock(IBinder.class));
         Bundle args = new Bundle();
         args.putString(ATTACH_PACKAGE_NAME, PACKAGE);
-        args.putInt(ATTACH_PROTOCOL_VERSION, 2);
+        args.putInt(ATTACH_PROTOCOL_VERSION, 3);
 
         Bundle reply = endpoint.attach(application, args);
 
-        assertEquals(2, reply.getInt(REPLY_PROTOCOL_VERSION));
+        assertEquals(3, reply.getInt(REPLY_PROTOCOL_VERSION));
     }
 
     /**

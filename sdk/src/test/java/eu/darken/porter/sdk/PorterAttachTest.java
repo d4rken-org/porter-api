@@ -169,4 +169,34 @@ public class PorterAttachTest {
 
         assertArrayEquals(new int[]{7, PackageManager.PERMISSION_GRANTED}, seen);
     }
+
+    private static Bundle permissionState(boolean granted, boolean shouldShowRationale) {
+        Bundle state = new Bundle();
+        state.putBoolean(REPLY_PERMISSION_GRANTED, granted);
+        state.putBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, shouldShowRationale);
+        return state;
+    }
+
+    @Test
+    public void aPausedGrantReplacesTheCachedAnswer() throws Exception {
+        FakePorterService fake = attached();
+        assertEquals(PackageManager.PERMISSION_GRANTED, Porter.checkSelfPermission());
+
+        fake.application.dispatchPermissionStateChanged(permissionState(false, true));
+
+        assertEquals(PackageManager.PERMISSION_DENIED, Porter.checkSelfPermission());
+        assertTrue(Porter.shouldShowRequestPermissionRationale());
+    }
+
+    @Test
+    public void aResumedGrantComesBackThroughTheSameChannel() throws Exception {
+        FakePorterService fake = attached();
+        fake.application.dispatchPermissionStateChanged(permissionState(false, true));
+        assertEquals(PackageManager.PERMISSION_DENIED, Porter.checkSelfPermission());
+
+        fake.application.dispatchPermissionStateChanged(permissionState(true, false));
+
+        assertEquals(PackageManager.PERMISSION_GRANTED, Porter.checkSelfPermission());
+        assertFalse(Porter.shouldShowRequestPermissionRationale());
+    }
 }

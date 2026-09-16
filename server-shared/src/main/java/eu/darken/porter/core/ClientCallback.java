@@ -10,4 +10,6 @@ public interface ClientCallback {
     IBinder asBinder();
 
     void onPermissionResult(int requestCode, boolean allowed) throws RemoteException;
+
+    void onPermissionStateChanged(boolean granted, boolean shouldShowRationale) throws RemoteException;
 }
