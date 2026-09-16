@@ -184,10 +184,10 @@ final class PorterSession {
             // The notification names no binder, so only the connection it was linked for may act on
             // it. One for a binder that has already been replaced tears nothing down.
             wasCurrent = current == this;
-            if (wasCurrent) {
-                current = null;
-                if (latest == this) latest = null;
-            }
+            if (wasCurrent) current = null;
+            // A session that died while it was still attaching has nothing to publish any more, and
+            // falls back to the connection that is serving, which may be one that outlives it.
+            if (latest == this) latest = current;
         }
         if (wasCurrent) Porter.scheduleBinderDeadListeners();
     }
