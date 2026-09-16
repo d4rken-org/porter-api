@@ -212,10 +212,11 @@ public final class Porter {
             listeners = new ArrayList<>(PERMISSION_LISTENERS);
         }
         for (ListenerHolder<OnRequestPermissionResultListener> holder : listeners) {
-            // A result belongs to the connection that asked for it. The check runs where the
-            // callback runs, so one already queued to a Handler is dropped as well.
+            // A result belongs to the connection that asked for it, and only while that
+            // connection is the one Porter answers for. The check runs where the callback runs, so
+            // one already queued to a Handler is dropped as well.
             deliver(holder.handler, () -> {
-                if (!session.isLatest()) return;
+                if (!session.isCurrent()) return;
                 holder.listener.onRequestPermissionResult(requestCode, result);
             });
         }
