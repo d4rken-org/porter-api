@@ -89,8 +89,9 @@ final class PorterSession {
             boolean rationale = state.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false);
             synchronized (SESSION_LOCK) {
                 // Both callbacks are oneway, so a server that has been replaced can still have one
-                // in flight; it describes a connection nobody asks about any more.
-                if (latest != PorterSession.this) return;
+                // in flight; it describes a connection nobody asks about any more. The connection
+                // that is serving is one nobody asks about only once a replacement has published.
+                if (current != PorterSession.this && latest != PorterSession.this) return;
                 synchronized (permissionLock) {
                     permissionGranted = granted;
                     shouldShowRequestPermissionRationale = rationale;
@@ -257,9 +258,9 @@ final class PorterSession {
         ready = true;
     }
 
-    boolean isLatest() {
+    boolean isCurrent() {
         synchronized (SESSION_LOCK) {
-            return latest == this;
+            return current == this;
         }
     }
 
