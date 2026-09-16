@@ -1,6 +1,8 @@
 package eu.darken.porter.endpoint;
 
 import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_RESULT_ALLOWED;
+import static eu.darken.porter.protocol.PorterProtocol.REPLY_PERMISSION_GRANTED;
+import static eu.darken.porter.protocol.PorterProtocol.REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE;
 
 import android.os.Bundle;
 import android.os.IBinder;
@@ -30,5 +32,14 @@ public final class PorterClientCallback implements ClientCallback {
         Bundle reply = new Bundle();
         reply.putBoolean(PERMISSION_RESULT_ALLOWED, allowed);
         application.dispatchRequestPermissionResult(requestCode, reply);
+    }
+
+    @Override
+    public void onPermissionStateChanged(boolean granted, boolean shouldShowRationale)
+            throws RemoteException {
+        Bundle state = new Bundle();
+        state.putBoolean(REPLY_PERMISSION_GRANTED, granted);
+        state.putBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, shouldShowRationale);
+        application.dispatchPermissionStateChanged(state);
     }
 }

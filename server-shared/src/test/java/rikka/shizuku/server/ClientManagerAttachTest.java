@@ -63,6 +63,10 @@ public class ClientManagerAttachTest {
             @Override
             public void onPermissionResult(int requestCode, boolean allowed) {
             }
+
+            @Override
+            public void onPermissionStateChanged(boolean granted, boolean shouldShowRationale) {
+            }
         };
     }
 

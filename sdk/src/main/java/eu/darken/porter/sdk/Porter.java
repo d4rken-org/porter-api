@@ -76,6 +76,13 @@ public final class Porter {
             scheduleRequestPermissionResultListener(requestCode,
                     allowed ? PackageManager.PERMISSION_GRANTED : PackageManager.PERMISSION_DENIED);
         }
+
+        @Override
+        public void dispatchPermissionStateChanged(Bundle state) {
+            permissionGranted = state.getBoolean(REPLY_PERMISSION_GRANTED, false);
+            shouldShowRequestPermissionRationale =
+                    state.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false);
+        }
     };
 
     private static final IBinder.DeathRecipient DEATH_RECIPIENT = () -> {
