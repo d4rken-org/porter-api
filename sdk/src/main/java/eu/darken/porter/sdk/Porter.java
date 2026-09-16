@@ -64,9 +64,19 @@ public final class Porter {
     private static int serverProtocolVersion = 0;
     private static String serverContext = null;
     private static long serverCapabilities = CAPABILITIES_NONE;
+    private static boolean binderReady = false;
+
+    /**
+     * Guards {@link #permissionGranted}, {@link #shouldShowRequestPermissionRationale} and
+     * {@link #permissionStateGeneration}, which the server writes from a binder thread. Never held
+     * across a binder call: acquire it to snapshot, release it for the call, acquire it to apply.
+     */
+    private static final Object PERMISSION_LOCK = new Object();
+
     private static boolean permissionGranted = false;
     private static boolean shouldShowRequestPermissionRationale = false;
-    private static boolean binderReady = false;
+    /** Counts the state pushes, so a reply that started before one can tell it lost the race. */
+    private static int permissionStateGeneration = 0;
 
     private static final IPorterApplication APPLICATION = new IPorterApplication.Stub() {
 
@@ -79,9 +89,13 @@ public final class Porter {
 
         @Override
         public void dispatchPermissionStateChanged(Bundle state) {
-            permissionGranted = state.getBoolean(REPLY_PERMISSION_GRANTED, false);
-            shouldShowRequestPermissionRationale =
-                    state.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false);
+            boolean granted = state.getBoolean(REPLY_PERMISSION_GRANTED, false);
+            boolean rationale = state.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false);
+            synchronized (PERMISSION_LOCK) {
+                permissionGranted = granted;
+                shouldShowRequestPermissionRationale = rationale;
+                permissionStateGeneration++;
+            }
         }
     };
 
@@ -95,9 +109,14 @@ public final class Porter {
         if (binder == newBinder) return;
 
         // A grant belongs to the connection that reported it. The attach reply sets it again for a
-        // new binder, so until then checkSelfPermission must not answer for the previous one.
-        permissionGranted = false;
-        shouldShowRequestPermissionRationale = false;
+        // new binder, so until then checkSelfPermission must not answer for the previous one. The
+        // reset also supplies the defaults for a reply that leaves those keys out.
+        int permissionGeneration;
+        synchronized (PERMISSION_LOCK) {
+            permissionGranted = false;
+            shouldShowRequestPermissionRationale = false;
+            permissionGeneration = permissionStateGeneration;
+        }
 
         if (newBinder == null) {
             binder = null;
@@ -134,17 +153,24 @@ public final class Porter {
                 serverProtocolVersion = 0;
                 serverContext = null;
                 serverCapabilities = CAPABILITIES_NONE;
-                permissionGranted = false;
-                shouldShowRequestPermissionRationale = false;
 
                 if (reply != null) {
                     serverUid = reply.getInt(REPLY_SERVER_UID, -1);
                     serverProtocolVersion = reply.getInt(REPLY_PROTOCOL_VERSION, 0);
                     serverContext = reply.getString(REPLY_SERVER_SECONTEXT);
                     serverCapabilities = reply.getLong(REPLY_CAPABILITIES, CAPABILITIES_NONE);
-                    permissionGranted = reply.getBoolean(REPLY_PERMISSION_GRANTED, false);
-                    shouldShowRequestPermissionRationale =
+
+                    boolean granted = reply.getBoolean(REPLY_PERMISSION_GRANTED, false);
+                    boolean rationale =
                             reply.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false);
+                    synchronized (PERMISSION_LOCK) {
+                        // The server registers the client before it answers, so a state push can
+                        // already have overtaken this reply. It then describes the newer state.
+                        if (permissionStateGeneration == permissionGeneration) {
+                            permissionGranted = granted;
+                            shouldShowRequestPermissionRationale = rationale;
+                        }
+                    }
                 }
 
                 Log.i(TAG, "attached");
@@ -159,8 +185,10 @@ public final class Porter {
                 serverProtocolVersion = 0;
                 serverContext = null;
                 serverCapabilities = CAPABILITIES_NONE;
-                permissionGranted = false;
-                shouldShowRequestPermissionRationale = false;
+                synchronized (PERMISSION_LOCK) {
+                    permissionGranted = false;
+                    shouldShowRequestPermissionRationale = false;
+                }
             }
         }
     }
@@ -639,25 +667,49 @@ public final class Porter {
      * @return {@link PackageManager#PERMISSION_GRANTED} or {@link PackageManager#PERMISSION_DENIED}
      */
     public static int checkSelfPermission() {
-        if (permissionGranted) return PackageManager.PERMISSION_GRANTED;
+        int generation;
+        synchronized (PERMISSION_LOCK) {
+            if (permissionGranted) return PackageManager.PERMISSION_GRANTED;
+            generation = permissionStateGeneration;
+        }
+        boolean granted;
         try {
-            permissionGranted = requireService().checkSelfPermission();
+            granted = requireService().checkSelfPermission();
         } catch (RemoteException e) {
             throw rethrowAsRuntimeException(e);
         }
-        return permissionGranted ? PackageManager.PERMISSION_GRANTED : PackageManager.PERMISSION_DENIED;
+        synchronized (PERMISSION_LOCK) {
+            if (permissionStateGeneration == generation) {
+                permissionGranted = granted;
+            } else {
+                granted = permissionGranted;
+            }
+            return granted ? PackageManager.PERMISSION_GRANTED : PackageManager.PERMISSION_DENIED;
+        }
     }
 
     /** Whether to show a rationale before {@link #requestPermission(int)}. */
     public static boolean shouldShowRequestPermissionRationale() {
-        if (permissionGranted) return false;
-        if (shouldShowRequestPermissionRationale) return true;
+        int generation;
+        synchronized (PERMISSION_LOCK) {
+            if (permissionGranted) return false;
+            if (shouldShowRequestPermissionRationale) return true;
+            generation = permissionStateGeneration;
+        }
+        boolean rationale;
         try {
-            shouldShowRequestPermissionRationale = requireService().shouldShowRequestPermissionRationale();
+            rationale = requireService().shouldShowRequestPermissionRationale();
         } catch (RemoteException e) {
             throw rethrowAsRuntimeException(e);
         }
-        return shouldShowRequestPermissionRationale;
+        synchronized (PERMISSION_LOCK) {
+            if (permissionStateGeneration == generation) {
+                shouldShowRequestPermissionRationale = rationale;
+            } else {
+                rationale = !permissionGranted && shouldShowRequestPermissionRationale;
+            }
+            return rationale;
+        }
     }
 
     // --------------------- non-app ----------------------
@@ -722,8 +774,11 @@ public final class Porter {
         serverProtocolVersion = 0;
         serverContext = null;
         serverCapabilities = CAPABILITIES_NONE;
-        permissionGranted = false;
-        shouldShowRequestPermissionRationale = false;
+        synchronized (PERMISSION_LOCK) {
+            permissionGranted = false;
+            shouldShowRequestPermissionRationale = false;
+            permissionStateGeneration = 0;
+        }
         binderReady = false;
         synchronized (RECEIVED_LISTENERS) {
             RECEIVED_LISTENERS.clear();

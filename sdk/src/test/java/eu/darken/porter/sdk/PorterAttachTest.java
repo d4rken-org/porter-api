@@ -189,6 +189,29 @@ public class PorterAttachTest {
     }
 
     @Test
+    public void aPauseArrivingDuringAttachOutlivesTheReply() {
+        FakePorterService fake = new FakePorterService();
+        fake.attachReply = fullReply();
+        fake.attachTimePermissionPush = permissionState(false, true);
+
+        Porter.onBinderReceived(fake, PACKAGE);
+
+        assertEquals(PackageManager.PERMISSION_DENIED, Porter.checkSelfPermission());
+        assertTrue(Porter.shouldShowRequestPermissionRationale());
+        assertEquals("only the permission keys lose to a push", SERVER_UID, Porter.getUid());
+    }
+
+    @Test
+    public void aGrantArrivingDuringACheckOutlivesTheAnswer() {
+        FakePorterService fake = new FakePorterService();
+        Porter.onBinderReceived(fake, PACKAGE);
+        fake.selfPermission = false;
+        fake.checkTimePermissionPush = permissionState(true, false);
+
+        assertEquals(PackageManager.PERMISSION_GRANTED, Porter.checkSelfPermission());
+    }
+
+    @Test
     public void aResumedGrantComesBackThroughTheSameChannel() throws Exception {
         FakePorterService fake = attached();
         fake.application.dispatchPermissionStateChanged(permissionState(false, true));
