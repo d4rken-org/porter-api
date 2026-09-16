@@ -179,7 +179,9 @@ public final class Porter {
     static void scheduleStickyCatchUp(@NonNull PorterSession retained) {
         List<ListenerHolder<OnBinderReceivedListener>> listeners;
         synchronized (RECEIVED_LISTENERS) {
-            if (!retained.isReady()) return;
+            // Another replacement can still be attaching over the retained connection: the pending
+            // listeners are then waiting for that one, and its own dispatch or rollback tells them.
+            if (!retained.isReady() || !retained.isSoleConnection()) return;
             listeners = new ArrayList<>(PENDING_STICKY);
             PENDING_STICKY.clear();
         }
