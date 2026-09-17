@@ -27,6 +27,7 @@
           - "api/**"
           - "provider/**"
           - "sdk/**"
+          - "shizuku-compat/**"
 
 "c: Service":
   - changed-files:

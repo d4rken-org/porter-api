@@ -6,7 +6,18 @@ apply from: "manifest.gradle"
 
 def sdkVersion = providers.gradleProperty("version")
         .orElse(providers.environmentVariable("VERSION")).getOrElse("0.2.0")
-def publishedModules = ["protocol", "sdk"]
+def publishedModules = ["protocol", "sdk", "shizuku-compat"]
+def licenseDetails = [
+        "Apache-2.0": ["Apache License 2.0", "https://www.apache.org/licenses/LICENSE-2.0"],
+        "MIT"       : ["MIT License", "https://opensource.org/license/mit"],
+]
+// sdk carries MIT next to Apache-2.0 because some of its classes derive from the
+// upstream Shizuku API; shizuku-compat is upstream code and is MIT alone.
+def moduleLicenses = [
+        "protocol"      : ["Apache-2.0"],
+        "sdk"           : ["Apache-2.0", "MIT"],
+        "shizuku-compat": ["MIT"],
+]
 
 allprojects {
     group = "com.github.d4rken-org.porter-api"
@@ -45,15 +56,11 @@ subprojects { subproject ->
                             description = "Porter Android SDK"
                             url = "https://github.com/d4rken-org/porter-api"
                             licenses {
-                                license {
-                                    name = "Apache License 2.0"
-                                    url = "https://www.apache.org/licenses/LICENSE-2.0"
-                                }
-                                if (subproject.name == "sdk") {
-                                    // Classes derived from the upstream Shizuku API keep its license.
+                                moduleLicenses[subproject.name].each { id ->
+                                    def details = licenseDetails[id]
                                     license {
-                                        name = "MIT License"
-                                        url = "https://opensource.org/license/mit"
+                                        name = details[0]
+                                        url = details[1]
                                     }
                                 }
                             }
