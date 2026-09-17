@@ -324,6 +324,11 @@ final class PorterSession {
         return serverCapabilities;
     }
 
+    @NonNull
+    PorterServerInfo serverInfo() {
+        return new PorterServerInfo(backend, serverProtocolVersion, null);
+    }
+
     String seLinuxContext() {
         if (serverContext != null) return serverContext;
         serverContext = wire.getSELinuxContext();

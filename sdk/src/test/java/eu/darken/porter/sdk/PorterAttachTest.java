@@ -74,8 +74,10 @@ public class PorterAttachTest {
 
         assertTrue(Porter.pingBinder());
         assertEquals(SERVER_UID, Porter.getUid());
-        assertEquals(1, Porter.getServerProtocolVersion());
-        assertEquals(CAPABILITIES_NONE, Porter.getServerCapabilities());
+        PorterServerInfo server = Porter.getServerInfo();
+        assertEquals(PorterBackend.PORTER, server.backend);
+        assertEquals(1, server.version);
+        assertNull("the Porter protocol has no patch level", server.patchVersion);
         assertEquals(CONTEXT, Porter.getSELinuxContext());
         assertEquals(PackageManager.PERMISSION_GRANTED, Porter.checkSelfPermission());
     }
@@ -87,8 +89,7 @@ public class PorterAttachTest {
         FakePorterService sparse = new FakePorterService();
         Porter.onBinderReceived(sparse, PACKAGE);
 
-        assertEquals(0, Porter.getServerProtocolVersion());
-        assertEquals(0L, Porter.getServerCapabilities());
+        assertEquals(0, Porter.getServerInfo().version);
         assertEquals(-1, Porter.getUid());
         assertNull(Porter.getSELinuxContext());
         assertEquals(PackageManager.PERMISSION_DENIED, Porter.checkSelfPermission());
