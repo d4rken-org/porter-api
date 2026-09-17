@@ -7,18 +7,21 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.os.RemoteException;
 
+import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
-import eu.darken.porter.server.IPorterServiceConnection;
-
-class PorterServiceConnection extends IPorterServiceConnection.Stub {
+class PorterServiceConnection implements UserServiceCallback {
 
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
 
     private final Set<ServiceConnection> connections = new HashSet<>();
+    /** Guarded by this instance, which is also what a wire locks while it registers one. */
+    private final Map<PorterBackend, IBinder> registeredBinders = new EnumMap<>(PorterBackend.class);
     private final ComponentName componentName;
     private IBinder binder;
 
@@ -44,8 +47,23 @@ class PorterServiceConnection extends IPorterServiceConnection.Stub {
         connections.clear();
     }
 
+    @Nullable
     @Override
-    public void connected(IBinder binder) {
+    public IBinder registeredBinder(@NonNull PorterBackend backend) {
+        synchronized (this) {
+            return registeredBinders.get(backend);
+        }
+    }
+
+    @Override
+    public void rememberRegisteredBinder(@NonNull PorterBackend backend, @NonNull IBinder binder) {
+        synchronized (this) {
+            registeredBinders.put(backend, binder);
+        }
+    }
+
+    @Override
+    public void connected(@NonNull IBinder binder) {
         MAIN_HANDLER.post(() -> {
                     for (ServiceConnection conn : connections) {
                         conn.onServiceConnected(componentName, binder);
