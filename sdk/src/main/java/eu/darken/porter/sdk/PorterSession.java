@@ -1,21 +1,14 @@
 package eu.darken.porter.sdk;
 
 import static eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE;
-import static eu.darken.porter.protocol.PorterProtocol.PERMISSION_RESULT_ALLOWED;
-import static eu.darken.porter.protocol.PorterProtocol.REPLY_PERMISSION_GRANTED;
-import static eu.darken.porter.protocol.PorterProtocol.REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE;
 
 import android.content.pm.PackageManager;
-import android.os.Bundle;
 import android.os.IBinder;
 import android.os.RemoteException;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-
-import eu.darken.porter.server.IPorterApplication;
-import eu.darken.porter.server.IPorterService;
 
 /**
  * One connection to one server binder: what its attach reply said, what the server has pushed since,
@@ -48,7 +41,7 @@ final class PorterSession {
 
     private final int generation;
     private final IBinder binder;
-    private final IPorterService service;
+    private final PorterWire wire;
 
     private int serverUid = -1;
     private int serverProtocolVersion = 0;
@@ -74,19 +67,16 @@ final class PorterSession {
     /** Whether {@link #deathRecipient} is registered on {@link #binder}. Guarded by SESSION_LOCK. */
     private boolean linked = false;
 
-    private final IPorterApplication application = new IPorterApplication.Stub() {
+    private final class SessionCallbacks implements PorterWire.Callbacks {
 
         @Override
-        public void dispatchRequestPermissionResult(int requestCode, Bundle data) {
-            boolean allowed = data.getBoolean(PERMISSION_RESULT_ALLOWED, false);
+        public void onRequestPermissionResult(int requestCode, boolean allowed) {
             Porter.scheduleRequestPermissionResultListener(PorterSession.this, requestCode,
                     allowed ? PackageManager.PERMISSION_GRANTED : PackageManager.PERMISSION_DENIED);
         }
 
         @Override
-        public void dispatchPermissionStateChanged(Bundle state) {
-            boolean granted = state.getBoolean(REPLY_PERMISSION_GRANTED, false);
-            boolean rationale = state.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false);
+        public void onPermissionStateChanged(boolean granted, boolean shouldShowRationale) {
             synchronized (SESSION_LOCK) {
                 // Both callbacks are oneway, so a server that has been replaced can still have one
                 // in flight; it describes a connection nobody asks about any more. The connection
@@ -94,17 +84,17 @@ final class PorterSession {
                 if (current != PorterSession.this && latest != PorterSession.this) return;
                 synchronized (permissionLock) {
                     permissionGranted = granted;
-                    shouldShowRequestPermissionRationale = rationale;
+                    shouldShowRequestPermissionRationale = shouldShowRationale;
                     permissionStateGeneration++;
                 }
             }
         }
-    };
+    }
 
     private PorterSession(int generation, @NonNull IBinder binder) {
         this.generation = generation;
         this.binder = binder;
-        this.service = PorterWire.asService(binder);
+        this.wire = new PorterProtocolWire(binder, new SessionCallbacks());
     }
 
     static void onBinderReceived(@Nullable IBinder newBinder, String packageName) {
@@ -128,8 +118,7 @@ final class PorterSession {
 
         try {
             int pushes = session.permissionPushes();
-            PorterWire.AttachReply reply =
-                    PorterWire.attach(session.service, session.application, packageName);
+            PorterWire.AttachReply reply = session.wire.attach(packageName);
             if (reply != null) session.apply(reply, pushes);
 
             boolean superseded;
@@ -289,13 +278,13 @@ final class PorterSession {
     }
 
     @NonNull
-    IPorterService service() {
-        return service;
+    PorterWire wire() {
+        return wire;
     }
 
     int uid() {
         if (serverUid != -1) return serverUid;
-        serverUid = PorterWire.getUid(service);
+        serverUid = wire.getUid();
         return serverUid;
     }
 
@@ -314,7 +303,7 @@ final class PorterSession {
 
     String seLinuxContext() {
         if (serverContext != null) return serverContext;
-        serverContext = PorterWire.getSELinuxContext(service);
+        serverContext = wire.getSELinuxContext();
         return serverContext;
     }
 
@@ -345,7 +334,7 @@ final class PorterSession {
             if (permissionGranted) return PackageManager.PERMISSION_GRANTED;
             pushes = permissionStateGeneration;
         }
-        boolean granted = PorterWire.checkSelfPermission(service);
+        boolean granted = wire.checkSelfPermission();
         synchronized (permissionLock) {
             if (permissionStateGeneration == pushes) {
                 permissionGranted = granted;
@@ -363,7 +352,7 @@ final class PorterSession {
             if (shouldShowRequestPermissionRationale) return true;
             pushes = permissionStateGeneration;
         }
-        boolean rationale = PorterWire.shouldShowRequestPermissionRationale(service);
+        boolean rationale = wire.shouldShowRequestPermissionRationale();
         synchronized (permissionLock) {
             if (permissionStateGeneration == pushes) {
                 shouldShowRequestPermissionRationale = rationale;

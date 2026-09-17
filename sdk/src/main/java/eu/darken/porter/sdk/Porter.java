@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Objects;
 
 import eu.darken.porter.protocol.PorterProtocol;
-import eu.darken.porter.server.IPorterService;
 
 /** The app-facing entry point: the binder Porter delivered, and everything reachable through it. */
 public final class Porter {
@@ -257,8 +256,8 @@ public final class Porter {
     }
 
     @NonNull
-    private static IPorterService requireService() {
-        return PorterSession.require().service();
+    static PorterWire requireWire() {
+        return PorterSession.require().wire();
     }
 
     /** Normal apps should not need this. */
@@ -321,7 +320,7 @@ public final class Porter {
      * @see PorterBinderWrapper
      */
     public static void transactRemote(@NonNull Parcel data, @Nullable Parcel reply, int flags) {
-        PorterWire.transactRemote(requireService(), data, reply, flags);
+        requireWire().transactRemote(data, reply, flags);
     }
 
     /**
@@ -332,7 +331,7 @@ public final class Porter {
     @NonNull
     public static PorterRemoteProcess newProcess(
             @NonNull String[] cmd, @Nullable String[] env, @Nullable String dir) {
-        return new PorterRemoteProcess(PorterWire.newProcess(requireService(), cmd, env, dir));
+        return requireWire().newProcess(cmd, env, dir);
     }
 
     /**
@@ -418,11 +417,11 @@ public final class Porter {
         }
 
         public Bundle forAdd() {
-            return PorterWire.encodeUserService(this);
+            return PorterUserServiceCodec.encodeUserService(this);
         }
 
         public Bundle forRemove(boolean remove) {
-            return PorterWire.encodeUserServiceRemoval(this, remove);
+            return PorterUserServiceCodec.encodeUserServiceRemoval(this, remove);
         }
     }
 
@@ -441,7 +440,7 @@ public final class Porter {
     public static void bindUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnection connection = PorterServiceConnections.get(args);
         connection.addConnection(conn);
-        PorterWire.addUserService(requireService(), connection, args.forAdd());
+        requireWire().addUserService(connection, args.forAdd());
     }
 
     /**
@@ -452,8 +451,8 @@ public final class Porter {
     public static int peekUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnection connection = PorterServiceConnections.get(args);
         connection.addConnection(conn);
-        return PorterWire.addUserService(
-                requireService(), connection, PorterWire.withoutCreation(args.forAdd()));
+        return requireWire().addUserService(
+                connection, PorterUserServiceCodec.withoutCreation(args.forAdd()));
     }
 
     /**
@@ -463,7 +462,7 @@ public final class Porter {
     public static void unbindUserService(
             @NonNull UserServiceArgs args, @Nullable ServiceConnection conn, boolean remove) {
         if (remove) {
-            PorterWire.removeUserService(requireService(), null /* (unused) */, args.forRemove(true));
+            requireWire().removeUserService(null /* (unused) */, args.forRemove(true));
             return;
         }
 
@@ -473,7 +472,7 @@ public final class Porter {
          * on the server first, then locally.
          */
         PorterServiceConnection connection = PorterServiceConnections.get(args);
-        PorterWire.removeUserService(requireService(), connection, args.forRemove(false));
+        requireWire().removeUserService(connection, args.forRemove(false));
         connection.clearConnections();
         PorterServiceConnections.remove(connection);
     }
@@ -486,15 +485,15 @@ public final class Porter {
     public static int checkRemotePermission(String permission) {
         PorterSession session = PorterSession.require();
         if (session.reportedUid() == 0) return PackageManager.PERMISSION_GRANTED;
-        return PorterWire.checkPermission(session.service(), permission);
+        return session.wire().checkPermission(permission);
     }
 
     public static String getSystemProperty(String name, String defaultValue) {
-        return PorterWire.getSystemProperty(requireService(), name, defaultValue);
+        return requireWire().getSystemProperty(name, defaultValue);
     }
 
     public static void setSystemProperty(String name, String value) {
-        PorterWire.setSystemProperty(requireService(), name, value);
+        requireWire().setSystemProperty(name, value);
     }
 
     /**
@@ -505,7 +504,7 @@ public final class Porter {
      * @see #addRequestPermissionResultListener(OnRequestPermissionResultListener)
      */
     public static void requestPermission(int requestCode) {
-        PorterWire.requestPermission(requireService(), requestCode);
+        requireWire().requestPermission(requestCode);
     }
 
     /**
@@ -524,29 +523,29 @@ public final class Porter {
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void exit() {
-        PorterWire.exit(requireService());
+        requireWire().exit();
     }
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void attachUserService(@NonNull IBinder binder, @NonNull String token) {
-        PorterWire.attachUserService(requireService(), binder, token);
+        requireWire().attachUserService(binder, token);
     }
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void dispatchPermissionConfirmationResult(
             int requestUid, int requestPid, int requestCode, boolean allowed, boolean onetime) {
-        PorterWire.dispatchPermissionConfirmationResult(
-                requireService(), requestUid, requestPid, requestCode, allowed, onetime);
+        requireWire().dispatchPermissionConfirmationResult(
+                requestUid, requestPid, requestCode, allowed, onetime);
     }
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static int getFlagsForUid(int uid, int mask) {
-        return PorterWire.getFlagsForUid(requireService(), uid, mask);
+        return requireWire().getFlagsForUid(uid, mask);
     }
 
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void updateFlagsForUid(int uid, int mask, int value) {
-        PorterWire.updateFlagsForUid(requireService(), uid, mask, value);
+        requireWire().updateFlagsForUid(uid, mask, value);
     }
 
     /**
