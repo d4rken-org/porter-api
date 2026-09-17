@@ -6,7 +6,7 @@ Preserve the public Shizuku Java packages, AIDL identifiers and Binder protocol.
 
 Upstream API code retains its MIT license and attribution. Keep the adapter's process-stable backend selection and gated Binder delivery intact.
 
-JitPack publishes `protocol` and `sdk`, which is what `jitpack.yml` builds and what `publishedModules` in `build.gradle` allows. The Shizuku-compatible `aidl`, `shared`, `api` and `provider` modules are not published; the Porter app build consumes them in-tree. Native/server/demo modules are optional for standalone SDK builds.
+JitPack publishes `protocol`, `sdk` and `shizuku-compat`, which is what `jitpack.yml` builds and what `publishedModules` in `build.gradle` allows. `shizuku-compat` holds only the upstream `moe.shizuku.api.BinderContainer` and is opt-in, because it collides with `dev.rikka.shizuku:provider`. The Shizuku-compatible `aidl`, `shared`, `api` and `provider` modules are not published; the Porter app build consumes them in-tree. Native/server/demo modules are optional for standalone SDK builds.
 
 Use the requested Claude review before committing significant changes. Do not publish repositories, tags or external builds before the maintainer's publication step.
 
