@@ -59,12 +59,6 @@ final class PorterProtocolWire implements PorterWire {
         this.callbacks = callbacks;
     }
 
-    @NonNull
-    @Override
-    public String descriptor() {
-        return PorterProtocol.DESCRIPTOR;
-    }
-
     @Nullable
     @Override
     public AttachReply attach(String packageName) throws RemoteException {
@@ -89,6 +83,25 @@ final class PorterProtocolWire implements PorterWire {
             service.asBinder().transact(TRANSACTION_transactRemote, data, reply, flags);
         } catch (RemoteException e) {
             throw rethrowAsRuntimeException(e);
+        }
+    }
+
+    @Override
+    public void forward(@NonNull IBinder target, int code, @NonNull Parcel data,
+                        @Nullable Parcel reply, int flags) {
+        // The token and the transaction are answered for by this one connection: a replacement
+        // publishing between the two would have its server reject a parcel carrying the other
+        // wire's token.
+        Parcel newData = Parcel.obtain();
+        try {
+            newData.writeInterfaceToken(PorterProtocol.DESCRIPTOR);
+            newData.writeStrongBinder(target);
+            newData.writeInt(code);
+            newData.writeInt(flags);
+            newData.appendFrom(data, 0, data.dataSize());
+            transactRemote(newData, reply, 0);
+        } finally {
+            newData.recycle();
         }
     }
 

@@ -47,15 +47,14 @@ interface PorterWire {
         }
     }
 
-    /** The interface token a forwarded transaction must carry. */
-    @NonNull
-    String descriptor();
-
     /** @return null if the server answered without a reply at all */
     @Nullable
     AttachReply attach(String packageName) throws RemoteException;
 
     void transactRemote(@NonNull Parcel data, @Nullable Parcel reply, int flags);
+
+    /** Forwards one transaction on {@code target}, in whatever envelope this wire's server expects. */
+    void forward(@NonNull IBinder target, int code, @NonNull Parcel data, @Nullable Parcel reply, int flags);
 
     int getUid();
 
