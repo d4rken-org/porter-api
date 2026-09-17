@@ -1,7 +1,6 @@
 package eu.darken.porter.sdk;
 
 import static androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX;
-import static eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE;
 
 import android.content.ComponentName;
 import android.content.Context;
@@ -337,16 +336,23 @@ public final class Porter {
         return PorterSession.require().uid();
     }
 
-    /** The protocol version the server reported when this connection attached; 0 if unreported. */
+    /**
+     * The protocol version the server reported when this connection attached; 0 if unreported.
+     *
+     * @deprecated the number is on the connected backend's own scale. {@link #getServerInfo()}
+     * reports it together with the backend it belongs to.
+     */
+    @Deprecated
     public static int getServerProtocolVersion() {
         PorterSession session = PorterSession.current();
         return session == null ? 0 : session.protocolVersion();
     }
 
-    /** Bitmask of the optional protocol features the server reported. */
-    public static long getServerCapabilities() {
+    /** What this connection's server reported when it attached, or null if nothing is connected. */
+    @Nullable
+    public static PorterServerInfo getServerInfo() {
         PorterSession session = PorterSession.current();
-        return session == null ? CAPABILITIES_NONE : session.capabilities();
+        return session == null ? null : session.serverInfo();
     }
 
     /**
