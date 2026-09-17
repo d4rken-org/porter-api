@@ -56,8 +56,17 @@ subprojects { subproject ->
                             description = "Porter Android SDK"
                             url = "https://github.com/d4rken-org/porter-api"
                             licenses {
-                                moduleLicenses[subproject.name].each { id ->
+                                def ids = moduleLicenses[subproject.name]
+                                if (ids == null) {
+                                    throw new GradleException(
+                                            "No moduleLicenses entry for published module '${subproject.name}'")
+                                }
+                                ids.each { id ->
                                     def details = licenseDetails[id]
+                                    if (details == null) {
+                                        throw new GradleException(
+                                                "No licenseDetails entry for licence id '${id}'")
+                                    }
                                     license {
                                         name = details[0]
                                         url = details[1]
