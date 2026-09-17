@@ -11,8 +11,6 @@ import androidx.annotation.Nullable;
 import java.io.FileDescriptor;
 import java.util.Objects;
 
-import eu.darken.porter.protocol.PorterProtocol;
-
 /**
  * Wraps a binder so that every transaction on it is forwarded through the Porter server.
  *
@@ -30,14 +28,17 @@ public class PorterBinderWrapper implements IBinder {
 
     @Override
     public boolean transact(int code, @NonNull Parcel data, @Nullable Parcel reply, int flags) throws RemoteException {
+        // One connection answers for both the token and the transaction: a replacement publishing
+        // between the two would have the server reject a parcel carrying the other wire's token.
+        PorterWire wire = Porter.requireWire();
         Parcel newData = Parcel.obtain();
         try {
-            newData.writeInterfaceToken(PorterProtocol.DESCRIPTOR);
+            newData.writeInterfaceToken(wire.descriptor());
             newData.writeStrongBinder(original);
             newData.writeInt(code);
             newData.writeInt(flags);
             newData.appendFrom(data, 0, data.dataSize());
-            Porter.transactRemote(newData, reply, 0);
+            wire.transactRemote(newData, reply, 0);
         } finally {
             newData.recycle();
         }

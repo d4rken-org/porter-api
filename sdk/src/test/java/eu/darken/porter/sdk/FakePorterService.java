@@ -3,6 +3,7 @@ package eu.darken.porter.sdk;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 
 import eu.darken.porter.server.IPorterApplication;
@@ -31,6 +32,53 @@ class FakePorterService extends IPorterService.Stub {
     int requestedPermissionCode = -1;
     int userServiceResult;
     Bundle userServiceArgs;
+
+    String[] newProcessCmd;
+    String[] newProcessEnv;
+    String newProcessDir;
+
+    /** A local binder to hand back, so the caller has one to hold on to. */
+    final IPorterRemoteProcess remoteProcess = new IPorterRemoteProcess.Stub() {
+
+        @Override
+        public ParcelFileDescriptor getOutputStream() {
+            return null;
+        }
+
+        @Override
+        public ParcelFileDescriptor getInputStream() {
+            return null;
+        }
+
+        @Override
+        public ParcelFileDescriptor getErrorStream() {
+            return null;
+        }
+
+        @Override
+        public int waitFor() {
+            return 0;
+        }
+
+        @Override
+        public int exitValue() {
+            return 0;
+        }
+
+        @Override
+        public void destroy() {
+        }
+
+        @Override
+        public boolean alive() {
+            return true;
+        }
+
+        @Override
+        public boolean waitForTimeout(long timeout, String unit) {
+            return true;
+        }
+    };
 
     int exitCalls;
     IBinder attachedUserServiceBinder;
@@ -92,7 +140,10 @@ class FakePorterService extends IPorterService.Stub {
 
     @Override
     public IPorterRemoteProcess newProcess(String[] cmd, String[] env, String dir) {
-        return null;
+        newProcessCmd = cmd;
+        newProcessEnv = env;
+        newProcessDir = dir;
+        return remoteProcess;
     }
 
     @Override
