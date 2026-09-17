@@ -28,20 +28,7 @@ public class PorterBinderWrapper implements IBinder {
 
     @Override
     public boolean transact(int code, @NonNull Parcel data, @Nullable Parcel reply, int flags) throws RemoteException {
-        // One connection answers for both the token and the transaction: a replacement publishing
-        // between the two would have the server reject a parcel carrying the other wire's token.
-        PorterWire wire = Porter.requireWire();
-        Parcel newData = Parcel.obtain();
-        try {
-            newData.writeInterfaceToken(wire.descriptor());
-            newData.writeStrongBinder(original);
-            newData.writeInt(code);
-            newData.writeInt(flags);
-            newData.appendFrom(data, 0, data.dataSize());
-            wire.transactRemote(newData, reply, 0);
-        } finally {
-            newData.recycle();
-        }
+        Porter.requireWire().forward(original, code, data, reply, flags);
         return true;
     }
 
