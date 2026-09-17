@@ -47,6 +47,10 @@ jobs:
           apk=$(ls tests/consumer/build/outputs/apk/release/*.apk)
           # The dex is binary, so grep only reports the match when -a makes it treat the stream as text.
           unzip -p "$apk" 'classes*.dex' | grep -qa 'moe/shizuku/api/BinderContainer'
+      # Both release consumer builds write the same APK path and the check above selects by glob,
+      # so this step has to stay after it.
+      - name: Build a minified consumer without the compatibility artifact
+        run: ./gradlew -p tests/consumer -PsdkRepository="$RUNNER_TEMP/porter-maven" assembleRelease
 
   shell:
     name: Porsh shell
