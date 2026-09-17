@@ -103,6 +103,13 @@ public class PorterApiProviderTest {
     }
 
     @Test
+    public void sendBinderTagsTheSessionWithPortersBackend() {
+        provider.call(DELIVERY_METHOD_SEND_BINDER, null, delivery(new FakePorterService()));
+
+        assertEquals(PorterBackend.PORTER, PorterSession.currentBackend());
+    }
+
+    @Test
     public void theProviderDeclarationIsEnforced() {
         assertThrows(IllegalStateException.class, () -> attached(new PorterApiProvider(), true, true));
         assertThrows(IllegalStateException.class, () -> attached(new PorterApiProvider(), false, false));

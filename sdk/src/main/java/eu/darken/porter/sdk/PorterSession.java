@@ -41,6 +41,7 @@ final class PorterSession {
 
     private final int generation;
     private final IBinder binder;
+    private final PorterBackend backend;
     private final PorterWire wire;
 
     private int serverUid = -1;
@@ -91,15 +92,22 @@ final class PorterSession {
         }
     }
 
-    private PorterSession(int generation, @NonNull IBinder binder) {
+    private PorterSession(int generation, @NonNull IBinder binder, @NonNull PorterBackend backend) {
         this.generation = generation;
         this.binder = binder;
+        this.backend = backend;
         this.wire = new PorterProtocolWire(binder, new SessionCallbacks());
     }
 
-    static void onBinderReceived(@Nullable IBinder newBinder, String packageName) {
+    static void onBinderReceived(@Nullable IBinder newBinder, String packageName,
+                                 @NonNull PorterBackend backend) {
         if (newBinder == null) {
             dropCurrent();
+            return;
+        }
+
+        if (backend != PorterBackend.PORTER) {
+            Log.w(TAG, "binder from " + backend + " discarded: no wire speaks that backend yet");
             return;
         }
 
@@ -111,7 +119,7 @@ final class PorterSession {
             if (current != null && current.binder == newBinder) return;
             if (latest != null && latest.binder == newBinder) return;
 
-            session = new PorterSession(++connections, newBinder);
+            session = new PorterSession(++connections, newBinder, backend);
             latest = session;
             session.link();
         }
@@ -237,6 +245,13 @@ final class PorterSession {
     static IBinder currentBinder() {
         PorterSession session = current();
         return session == null ? null : session.binder;
+    }
+
+    /** The backend of the published connection, or null while there is none. */
+    @Nullable
+    static PorterBackend currentBackend() {
+        PorterSession session = current();
+        return session == null ? null : session.backend;
     }
 
     static boolean pingCurrent() {
