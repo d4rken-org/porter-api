@@ -45,7 +45,8 @@ jobs:
       - name: Check the compatibility class survived R8
         run: |
           apk=$(ls tests/consumer/build/outputs/apk/release/*.apk)
-          unzip -p "$apk" 'classes*.dex' | grep -q 'moe/shizuku/api/BinderContainer'
+          # The dex is binary, so grep only reports the match when -a makes it treat the stream as text.
+          unzip -p "$apk" 'classes*.dex' | grep -qa 'moe/shizuku/api/BinderContainer'
 
   shell:
     name: Porsh shell
