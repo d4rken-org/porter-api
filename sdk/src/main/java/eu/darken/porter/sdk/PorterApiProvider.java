@@ -106,6 +106,12 @@ public class PorterApiProvider extends ContentProvider {
         }
     }
 
+    /** The envelope this provider speaks; a subclass overrides it to answer another authority. */
+    @NonNull
+    PorterDelivery delivery() {
+        return PorterProtocolDelivery.INSTANCE;
+    }
+
     @Override
     public void attachInfo(Context context, ProviderInfo info) {
         super.attachInfo(context, info);
@@ -153,7 +159,7 @@ public class PorterApiProvider extends ContentProvider {
             return;
         }
 
-        IBinder binder = extras.getBinder(DELIVERY_EXTRA_BINDER);
+        IBinder binder = delivery().readBinder(extras);
         if (binder == null) {
             Log.w(TAG, "sendBinder is called without a binder");
             return;
@@ -161,7 +167,7 @@ public class PorterApiProvider extends ContentProvider {
 
         Log.d(TAG, "binder received");
 
-        Porter.onBinderReceived(binder, getContext().getPackageName());
+        Porter.onBinderReceived(binder, getContext().getPackageName(), delivery().backend());
 
         if (enableMultiProcess) {
             Log.d(TAG, "broadcast binder");
@@ -178,7 +184,18 @@ public class PorterApiProvider extends ContentProvider {
             return false;
         }
 
-        reply.putBinder(DELIVERY_EXTRA_BINDER, Porter.getBinder());
+        // Whoever reads this reply tags the binder by the authority it arrived on, so a binder that
+        // speaks the other backend's wire must not leave through this one.
+        if (PorterSession.currentBackend() != delivery().backend()) {
+            return false;
+        }
+
+        IBinder binder = Porter.getBinder();
+        if (binder == null) {
+            return false;
+        }
+
+        delivery().writeBinder(reply, binder);
         return true;
     }
 

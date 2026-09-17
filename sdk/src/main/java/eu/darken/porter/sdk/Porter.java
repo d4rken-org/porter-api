@@ -30,9 +30,15 @@ public final class Porter {
     private Porter() {
     }
 
+    /** Announces a binder that speaks Porter's own wire. */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void onBinderReceived(@Nullable IBinder newBinder, String packageName) {
-        PorterSession.onBinderReceived(newBinder, packageName);
+        onBinderReceived(newBinder, packageName, PorterBackend.PORTER);
+    }
+
+    static void onBinderReceived(@Nullable IBinder newBinder, String packageName,
+                                 @NonNull PorterBackend backend) {
+        PorterSession.onBinderReceived(newBinder, packageName, backend);
     }
 
     public interface OnBinderReceivedListener {
