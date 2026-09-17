@@ -114,4 +114,34 @@ public class PorterApiProviderTest {
         assertThrows(IllegalStateException.class, () -> attached(new PorterApiProvider(), true, true));
         assertThrows(IllegalStateException.class, () -> attached(new PorterApiProvider(), false, false));
     }
+
+    /**
+     * The liveness check runs against a binder the session already resolved. A replacement that
+     * lands while that check is in flight must not become the answer.
+     */
+    @Test
+    public void aReplacementLandingDuringTheLivenessCheckIsNotTheAnswer() {
+        class ReplacingPing extends FakePorterService {
+            FakePorterService replacement;
+
+            @Override
+            public boolean pingBinder() {
+                FakePorterService next = replacement;
+                if (next != null) {
+                    replacement = null;
+                    Porter.onBinderReceived(next, context.getPackageName());
+                }
+                return true;
+            }
+        }
+
+        ReplacingPing first = new ReplacingPing();
+        provider.call(DELIVERY_METHOD_SEND_BINDER, null, delivery(first));
+        first.replacement = new FakePorterService();
+
+        Bundle reply = provider.call(DELIVERY_METHOD_GET_BINDER, null, new Bundle());
+
+        assertNotNull(reply);
+        assertSame(first, reply.getBinder(DELIVERY_EXTRA_BINDER));
+    }
 }
