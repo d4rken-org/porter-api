@@ -29,6 +29,7 @@ import eu.darken.porter.core.ManagerOperations;
 import eu.darken.porter.core.UserServiceOptions;
 import eu.darken.porter.protocol.PorterProtocol;
 import eu.darken.porter.sdk.Porter;
+import eu.darken.porter.sdk.UserServiceArgsBridge;
 import rikka.shizuku.server.ClientManager;
 import rikka.shizuku.server.ConfigManager;
 import rikka.shizuku.server.ServerTestSupport.TestPolicy;
@@ -112,8 +113,8 @@ public class PorterWireRoundTripTest {
     @Test
     public void theUserServiceBundlesSurviveTheRoundTrip() {
         ComponentName component = new ComponentName(PACKAGE, CLASS);
-        Bundle add = new Porter.UserServiceArgs(component)
-                .tag("t").version(3).daemon(false).processNameSuffix("p").debuggable(true).forAdd();
+        Bundle add = UserServiceArgsBridge.forAdd(new Porter.UserServiceArgs(component)
+                .tag("t").version(3).daemon(false).processNameSuffix("p").debuggable(true));
 
         UserServiceOptions bind = PorterUserServiceOptions.decodeForBind(add);
 
@@ -127,7 +128,8 @@ public class PorterWireRoundTripTest {
         assertFalse(bind.use32Bit);
         assertTrue(bind.remove);
 
-        Bundle remove = new Porter.UserServiceArgs(component).tag("t").forRemove(false);
+        Bundle remove = UserServiceArgsBridge.forRemove(
+                new Porter.UserServiceArgs(component).tag("t"), false);
 
         assertFalse(PorterUserServiceOptions.decodeForRemove(remove).remove);
     }

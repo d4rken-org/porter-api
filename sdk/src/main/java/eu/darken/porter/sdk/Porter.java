@@ -417,11 +417,11 @@ public final class Porter {
             return this;
         }
 
-        public Bundle forAdd() {
+        Bundle forAdd() {
             return PorterUserServiceCodec.encodeUserService(this);
         }
 
-        public Bundle forRemove(boolean remove) {
+        Bundle forRemove(boolean remove) {
             return PorterUserServiceCodec.encodeUserServiceRemoval(this, remove);
         }
     }
