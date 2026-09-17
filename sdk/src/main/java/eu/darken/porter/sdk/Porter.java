@@ -324,17 +324,6 @@ public final class Porter {
     }
 
     /**
-     * Starts a process in the Porter server; the arguments are passed to
-     * {@link Runtime#exec(String[], String[], java.io.File)}. The process is killed when the caller
-     * process dies. Read and write its streams from different threads.
-     */
-    @NonNull
-    public static PorterRemoteProcess newProcess(
-            @NonNull String[] cmd, @Nullable String[] env, @Nullable String dir) {
-        return requireWire().newProcess(cmd, env, dir);
-    }
-
-    /**
      * @return uid of the Porter server
      * @throws IllegalStateException if called before a binder is received
      */

@@ -57,9 +57,6 @@ interface PorterWire {
 
     void transactRemote(@NonNull Parcel data, @Nullable Parcel reply, int flags);
 
-    @NonNull
-    PorterRemoteProcess newProcess(@NonNull String[] cmd, @Nullable String[] env, @Nullable String dir);
-
     int getUid();
 
     String getSELinuxContext();

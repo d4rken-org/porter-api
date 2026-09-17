@@ -91,17 +91,6 @@ final class PorterProtocolWire implements PorterWire {
         }
     }
 
-    @NonNull
-    @Override
-    public PorterRemoteProcess newProcess(
-            @NonNull String[] cmd, @Nullable String[] env, @Nullable String dir) {
-        try {
-            return new PorterRemoteProcess(service.newProcess(cmd, env, dir));
-        } catch (RemoteException e) {
-            throw rethrowAsRuntimeException(e);
-        }
-    }
-
     @Override
     public int getUid() {
         try {
