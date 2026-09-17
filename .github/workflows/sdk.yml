@@ -40,6 +40,12 @@ jobs:
         run: ./gradlew -p tests/consumer -PsdkRepository="$RUNNER_TEMP/porter-maven" assembleDebug
       - name: Build a dual-SDK consumer
         run: ./gradlew -p tests/consumer -PsdkRepository="$RUNNER_TEMP/porter-maven" -PwithLegacySdk=true assembleDebug
+      - name: Build a minified consumer with the compatibility artifact
+        run: ./gradlew -p tests/consumer -PsdkRepository="$RUNNER_TEMP/porter-maven" -PwithCompat=true assembleRelease
+      - name: Check the compatibility class survived R8
+        run: |
+          apk=$(ls tests/consumer/build/outputs/apk/release/*.apk)
+          unzip -p "$apk" 'classes*.dex' | grep -q 'moe/shizuku/api/BinderContainer'
 
   shell:
     name: Porsh shell

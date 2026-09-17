@@ -1,5 +1,6 @@
 plugins { id "com.android.application" version "8.11.1" }
 def withLegacySdk = providers.gradleProperty("withLegacySdk").getOrElse("false").toBoolean()
+def withCompat = providers.gradleProperty("withCompat").getOrElse("false").toBoolean()
 android {
     namespace = "eu.darken.porter.sdk.consumer"
     compileSdk = 36
@@ -14,12 +15,22 @@ android {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
+    buildTypes {
+        release {
+            minifyEnabled = true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            signingConfig = signingConfigs.debug
+        }
+    }
     if (withLegacySdk) {
         sourceSets.main.java.srcDir("src/legacy/java")
     }
 }
 dependencies {
     implementation "com.github.d4rken-org.porter-api:sdk:${providers.gradleProperty('sdkVersion').getOrElse('0.2.0')}"
+    if (withCompat) {
+        implementation "com.github.d4rken-org.porter-api:shizuku-compat:${providers.gradleProperty('sdkVersion').getOrElse('0.2.0')}"
+    }
     if (withLegacySdk) {
         implementation "dev.rikka.shizuku:api:13.1.5"
         implementation "dev.rikka.shizuku:provider:13.1.5"
