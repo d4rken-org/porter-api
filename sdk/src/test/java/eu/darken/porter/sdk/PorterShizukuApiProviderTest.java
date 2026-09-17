@@ -116,6 +116,15 @@ public class PorterShizukuApiProviderTest {
     }
 
     @Test
+    public void theBinderIsOnlyHandedOutForItsOwnBackend() {
+        FakePorterService fake = new FakePorterService();
+        Porter.onBinderReceived(fake, context.getPackageName());
+
+        assertNull(PorterSession.binderFor(PorterBackend.SHIZUKU));
+        assertSame(fake, PorterSession.binderFor(PorterBackend.PORTER));
+    }
+
+    @Test
     public void getBinderRefusesWhileTheLiveSessionIsPorters() {
         Porter.onBinderReceived(new FakePorterService(), context.getPackageName());
         assertTrue(Porter.pingBinder());

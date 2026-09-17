@@ -180,17 +180,7 @@ public class PorterApiProvider extends ContentProvider {
 
     private boolean handleGetBinder(@NonNull Bundle reply) {
         // Other processes in the same app can read the provider without permission
-        if (!Porter.pingBinder()) {
-            return false;
-        }
-
-        // Whoever reads this reply tags the binder by the authority it arrived on, so a binder that
-        // speaks the other backend's wire must not leave through this one.
-        if (PorterSession.currentBackend() != delivery().backend()) {
-            return false;
-        }
-
-        IBinder binder = Porter.getBinder();
+        IBinder binder = PorterSession.binderFor(delivery().backend());
         if (binder == null) {
             return false;
         }
