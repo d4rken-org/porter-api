@@ -37,6 +37,7 @@ public class PorterProtocolWireUserServiceTest {
 
     private static final String PACKAGE = "eu.darken.porter.probe";
     private static final String CLASS = "ProbeService";
+    private static final String PROCESS_SUFFIX = "probe";
 
     /** Records the connection binder of every add and remove the server was asked for. */
     private static class RecordingService extends FakePorterService {
@@ -114,7 +115,9 @@ public class PorterProtocolWireUserServiceTest {
     }
 
     private static Porter.UserServiceArgs args(String tag) {
-        return new Porter.UserServiceArgs(new ComponentName(PACKAGE, CLASS)).tag(tag);
+        return new Porter.UserServiceArgs(new ComponentName(PACKAGE, CLASS))
+                .processNameSuffix(PROCESS_SUFFIX)
+                .tag(tag);
     }
 
     @Test
