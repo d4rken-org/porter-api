@@ -254,6 +254,14 @@ final class PorterSession {
         return session == null ? null : session.backend;
     }
 
+    /** The published binder, but only if that connection speaks {@code backend}. */
+    @Nullable
+    static IBinder binderFor(@NonNull PorterBackend backend) {
+        PorterSession session = current();
+        if (session == null || session.backend != backend) return null;
+        return session.binder.pingBinder() ? session.binder : null;
+    }
+
     static boolean pingCurrent() {
         PorterSession session = current();
         return session != null && session.binder.pingBinder();
