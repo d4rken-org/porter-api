@@ -73,9 +73,9 @@ interface PorterWire {
 
     boolean shouldShowRequestPermissionRationale();
 
-    int addUserService(@NonNull PorterServiceConnection conn, @NonNull Bundle args);
+    int addUserService(@NonNull UserServiceCallback conn, @NonNull Bundle args);
 
-    int removeUserService(@Nullable PorterServiceConnection conn, @NonNull Bundle args);
+    int removeUserService(@Nullable UserServiceCallback conn, @NonNull Bundle args);
 
     void exit();
 

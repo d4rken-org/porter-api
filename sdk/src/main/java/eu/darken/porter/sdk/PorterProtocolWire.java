@@ -26,6 +26,7 @@ import androidx.annotation.Nullable;
 import eu.darken.porter.protocol.PorterProtocol;
 import eu.darken.porter.server.IPorterApplication;
 import eu.darken.porter.server.IPorterService;
+import eu.darken.porter.server.IPorterServiceConnection;
 
 /** The Porter protocol as a client speaks it, over one server binder. */
 final class PorterProtocolWire implements PorterWire {
@@ -164,20 +165,53 @@ final class PorterProtocolWire implements PorterWire {
     }
 
     @Override
-    public int addUserService(@NonNull PorterServiceConnection conn, @NonNull Bundle args) {
+    public int addUserService(@NonNull UserServiceCallback conn, @NonNull Bundle args) {
+        IPorterServiceConnection adapter = adapterFor(conn);
         try {
-            return service.addUserService(conn, args);
+            return service.addUserService(adapter, args);
         } catch (RemoteException e) {
             throw rethrowAsRuntimeException(e);
         }
     }
 
     @Override
-    public int removeUserService(@Nullable PorterServiceConnection conn, @NonNull Bundle args) {
+    public int removeUserService(@Nullable UserServiceCallback conn, @NonNull Bundle args) {
+        IPorterServiceConnection adapter = adapterFor(conn);
         try {
-            return service.removeUserService(conn, args);
+            return service.removeUserService(adapter, args);
         } catch (RemoteException e) {
             throw rethrowAsRuntimeException(e);
+        }
+    }
+
+    /**
+     * The stub this wire has registered for {@code callback}, created on first use, and null for the
+     * removal that names no callback at all.
+     *
+     * <p>Lookup, creation and store happen under one lock on the callback, and the lock is released
+     * before the call that carries the result: two threads binding one service register one stub.
+     */
+    @Nullable
+    private static IPorterServiceConnection adapterFor(@Nullable UserServiceCallback callback) {
+        if (callback == null) return null;
+        synchronized (callback) {
+            IBinder registered = callback.registeredBinder(PorterBackend.PORTER);
+            if (registered != null) return IPorterServiceConnection.Stub.asInterface(registered);
+
+            IPorterServiceConnection adapter = new IPorterServiceConnection.Stub() {
+
+                @Override
+                public void connected(IBinder binder) {
+                    callback.connected(binder);
+                }
+
+                @Override
+                public void died() {
+                    callback.died();
+                }
+            };
+            callback.rememberRegisteredBinder(PorterBackend.PORTER, adapter.asBinder());
+            return adapter;
         }
     }
 
