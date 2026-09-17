@@ -28,11 +28,6 @@
           - "provider/**"
           - "sdk/**"
 
-"c: Client":
-  - changed-files:
-      - any-glob-to-any-file:
-          - "client/**"
-
 "c: Service":
   - changed-files:
       - any-glob-to-any-file:

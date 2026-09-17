@@ -22,7 +22,7 @@ jobs:
       - name: Install Android SDK
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
       - name: Unit tests
-        run: ./gradlew :sdk:testDebugUnitTest :client:testDebugUnitTest
+        run: ./gradlew :sdk:testDebugUnitTest
       - name: Upload unit test reports
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f #v6.0.0

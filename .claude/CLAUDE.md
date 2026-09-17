@@ -4,7 +4,7 @@ This repository is the API submodule used by Porter and the source of its publis
 
 Preserve the public Shizuku Java packages, AIDL identifiers and Binder protocol. SDK release versions are independent of protocol versions in `manifest.gradle` and `ShizukuApiConstants`.
 
-The `client` module comes from Porter and uses Apache 2.0 (`client/LICENSE`). Upstream API code retains its MIT license and attribution. Keep the adapter's process-stable backend selection and gated Binder delivery intact.
+Upstream API code retains its MIT license and attribution. Keep the adapter's process-stable backend selection and gated Binder delivery intact.
 
 JitPack publishes `protocol` and `sdk`, which is what `jitpack.yml` builds and what `publishedModules` in `build.gradle` allows. The Shizuku-compatible `aidl`, `shared`, `api` and `provider` modules are not published; the Porter app build consumes them in-tree. Native/server/demo modules are optional for standalone SDK builds.
 
