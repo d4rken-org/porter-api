@@ -10,8 +10,9 @@ import androidx.annotation.NonNull;
  * authority than {@link PorterApiProvider}'s.
  *
  * <p><b>User services are not available on this backend yet.</b> A binder delivered here attaches
- * and {@link Porter} answers for it, but {@link Porter#bindUserService} and
- * {@link Porter#unbindUserService} throw {@link UnsupportedOperationException}.
+ * and {@link Porter} answers for it, but {@link Porter#bindUserService},
+ * {@link Porter#peekUserService} and {@link Porter#unbindUserService} throw
+ * {@link UnsupportedOperationException}.
  *
  * <p>The SDK declares nothing at that authority. An app that wants Shizuku delivery adds the whole
  * block itself, the permission and the meta-data included: the server refuses an app that requests
