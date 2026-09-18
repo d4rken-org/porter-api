@@ -33,13 +33,50 @@ class PorterServiceConnection implements UserServiceCallback {
     /** Counts the changes to {@link #connections}, so a queued death can tell it is stale. */
     private int generation = 0;
 
-    /** @return whether {@code conn} was not registered already */
-    public boolean addConnection(@Nullable ServiceConnection conn) {
-        if (conn == null || !connections.add(conn)) return false;
-        generation++;
-        // A registration made after a death is a live binding again, and is owed a later one.
-        dead = false;
-        return true;
+    /** What one registration changed here, so the caller that made it can undo exactly that. */
+    static final class Registration {
+
+        private final boolean inserted;
+        private final int previousGeneration;
+        private final int newGeneration;
+        private final boolean previouslyDead;
+
+        private Registration(boolean inserted, int previousGeneration, int newGeneration,
+                             boolean previouslyDead) {
+            this.inserted = inserted;
+            this.previousGeneration = previousGeneration;
+            this.newGeneration = newGeneration;
+            this.previouslyDead = previouslyDead;
+        }
+    }
+
+    /** @return what the request changed, for {@link #undo(Registration, ServiceConnection)} */
+    @NonNull
+    public Registration addConnection(@Nullable ServiceConnection conn) {
+        int previousGeneration = generation;
+        boolean previouslyDead = dead;
+        boolean inserted = conn != null && connections.add(conn);
+
+        // A registration made after a death is a live binding again, and is owed a later one. That
+        // holds for a caller rebinding the instance it already registered, which inserts nothing.
+        if (inserted || (conn != null && dead)) {
+            generation++;
+            dead = false;
+        }
+
+        return new Registration(inserted, previousGeneration, generation, previouslyDead);
+    }
+
+    /** Puts back what {@code registration} changed, for a call the server went on to refuse. */
+    public void undo(@NonNull Registration registration, @Nullable ServiceConnection conn) {
+        // Only what this call registered: an earlier bind of the same ServiceConnection is a
+        // registration of its own, and the server holds no ServiceConnection to undo.
+        if (registration.inserted) removeConnection(conn);
+
+        // A binding that arrived in between owns the lifecycle state now, and keeps it.
+        if (generation != registration.newGeneration) return;
+        generation = registration.previousGeneration;
+        dead = registration.previouslyDead;
     }
 
     public void removeConnection(@Nullable ServiceConnection conn) {

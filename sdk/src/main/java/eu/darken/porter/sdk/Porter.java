@@ -431,13 +431,13 @@ public final class Porter {
      */
     public static void bindUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnection connection = PorterServiceConnections.get(args);
-        boolean registered = connection.addConnection(conn);
+        PorterServiceConnection.Registration registration = connection.addConnection(conn);
         try {
             requireWire().addUserService(connection, args, false);
         } catch (RuntimeException e) {
-            // Only what this call registered: an earlier bind of the same ServiceConnection is a
-            // registration of its own, and the server holds no ServiceConnection to undo.
-            if (registered) connection.removeConnection(conn);
+            // A refused bind never became a binding, so it has no claim on anything the binding it
+            // registered over is owed.
+            connection.undo(registration, conn);
             throw e;
         }
     }
@@ -449,11 +449,11 @@ public final class Porter {
      */
     public static int peekUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnection connection = PorterServiceConnections.get(args);
-        boolean registered = connection.addConnection(conn);
+        PorterServiceConnection.Registration registration = connection.addConnection(conn);
         try {
             return requireWire().addUserService(connection, args, true);
         } catch (RuntimeException e) {
-            if (registered) connection.removeConnection(conn);
+            connection.undo(registration, conn);
             throw e;
         }
     }
