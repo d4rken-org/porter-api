@@ -10,8 +10,10 @@ import android.os.RemoteException;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
+import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -19,75 +21,39 @@ class PorterServiceConnection implements UserServiceCallback {
 
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
 
+    /** Guarded by {@link PorterServiceConnections#LOCK}. */
     private final Set<ServiceConnection> connections = new HashSet<>();
     /** Guarded by this instance, which is also what a wire locks while it registers one. */
     private final Map<PorterBackend, IBinder> registeredBinders = new EnumMap<>(PorterBackend.class);
     private final ComponentName componentName;
     private IBinder binder;
 
+    /** Set once, by the death of the binder this was bound to. Guarded by the same lock. */
+    private boolean terminal = false;
+
     public PorterServiceConnection(Porter.UserServiceArgs args) {
         this.componentName = args.componentName;
     }
 
-    private boolean dead = false;
-    /** Counts the changes to {@link #connections}, so a queued death can tell it is stale. */
-    private int generation = 0;
-
-    /** What one registration changed here, so the caller that made it can undo exactly that. */
-    static final class Registration {
-
-        private final boolean inserted;
-        private final int previousGeneration;
-        private final int newGeneration;
-        private final boolean previouslyDead;
-
-        private Registration(boolean inserted, int previousGeneration, int newGeneration,
-                             boolean previouslyDead) {
-            this.inserted = inserted;
-            this.previousGeneration = previousGeneration;
-            this.newGeneration = newGeneration;
-            this.previouslyDead = previouslyDead;
+    /** @return whether {@code conn} was inserted, so a refused call can remove what it added */
+    public boolean addConnection(@Nullable ServiceConnection conn) {
+        synchronized (PorterServiceConnections.LOCK) {
+            return conn != null && connections.add(conn);
         }
-    }
-
-    /** @return what the request changed, for {@link #undo(Registration, ServiceConnection)} */
-    @NonNull
-    public Registration addConnection(@Nullable ServiceConnection conn) {
-        int previousGeneration = generation;
-        boolean previouslyDead = dead;
-        boolean inserted = conn != null && connections.add(conn);
-
-        // A registration made after a death is a live binding again, and is owed a later one. That
-        // holds for a caller rebinding the instance it already registered, which inserts nothing.
-        if (inserted || (conn != null && dead)) {
-            generation++;
-            dead = false;
-        }
-
-        return new Registration(inserted, previousGeneration, generation, previouslyDead);
-    }
-
-    /** Puts back what {@code registration} changed, for a call the server went on to refuse. */
-    public void undo(@NonNull Registration registration, @Nullable ServiceConnection conn) {
-        // Only what this call registered: an earlier bind of the same ServiceConnection is a
-        // registration of its own, and the server holds no ServiceConnection to undo.
-        if (registration.inserted) removeConnection(conn);
-
-        // A binding that arrived in between owns the lifecycle state now, and keeps it.
-        if (generation != registration.newGeneration) return;
-        generation = registration.previousGeneration;
-        dead = registration.previouslyDead;
     }
 
     public void removeConnection(@Nullable ServiceConnection conn) {
-        if (conn != null) {
-            connections.remove(conn);
+        synchronized (PorterServiceConnections.LOCK) {
+            if (conn != null) {
+                connections.remove(conn);
+            }
         }
     }
 
     public void clearConnections() {
-        generation++;
-        connections.clear();
+        synchronized (PorterServiceConnections.LOCK) {
+            connections.clear();
+        }
     }
 
     @Nullable
@@ -107,8 +73,19 @@ class PorterServiceConnection implements UserServiceCallback {
 
     @Override
     public void connected(@NonNull IBinder binder) {
+        synchronized (PorterServiceConnections.LOCK) {
+            // Nothing is registered here any more and nothing can be, so holding the binder and
+            // linking a recipient would only keep both alive for a delivery that cannot happen.
+            if (terminal) return;
+        }
+
         MAIN_HANDLER.post(() -> {
-                    for (ServiceConnection conn : connections) {
+                    List<ServiceConnection> snapshot;
+                    synchronized (PorterServiceConnections.LOCK) {
+                        snapshot = new ArrayList<>(connections);
+                    }
+
+                    for (ServiceConnection conn : snapshot) {
                         conn.onServiceConnected(componentName, binder);
                     }
                 }
@@ -128,21 +105,23 @@ class PorterServiceConnection implements UserServiceCallback {
     public void died() {
         binder = null;
 
-        if (dead) return;
-        dead = true;
+        List<ServiceConnection> snapshot;
+        synchronized (PorterServiceConnections.LOCK) {
+            // One binder carries a recipient per "connected" push, so its death arrives repeatedly.
+            if (terminal) return;
+            terminal = true;
+            snapshot = new ArrayList<>(connections);
+            connections.clear();
+            PorterServiceConnections.remove(this);
+        }
 
-        // A rebind can land before this runs. It is then a binding of its own, and the death
-        // belongs to the one it replaced: telling it would disconnect a caller nothing happened to.
-        int atDeath = generation;
+        // By the time the lock is released the death has happened, the set it applies to is
+        // captured and this instance is evicted, so a later bind gets one of its own. Only the
+        // delivery waits for the main thread.
         MAIN_HANDLER.post(() -> {
-                    if (generation != atDeath) return;
-
-                    for (ServiceConnection conn : connections) {
+                    for (ServiceConnection conn : snapshot) {
                         conn.onServiceDisconnected(componentName);
                     }
-
-                    connections.clear();
-                    PorterServiceConnections.remove(this);
                 }
         );
     }
