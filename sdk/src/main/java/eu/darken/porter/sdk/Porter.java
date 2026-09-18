@@ -478,6 +478,7 @@ public final class Porter {
         } finally {
             connection.clearConnections();
             PorterServiceConnections.remove(connection);
+            PorterServiceConnections.cancelPending(args);
         }
     }
 

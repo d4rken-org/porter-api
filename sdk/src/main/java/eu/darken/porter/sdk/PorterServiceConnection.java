@@ -31,6 +31,9 @@ class PorterServiceConnection implements UserServiceCallback {
     /** Set once, by the death of the binder this was bound to. Guarded by the same lock. */
     private boolean terminal = false;
 
+    /** The set a queued death delivery will be handed, null once it ran or was called off. */
+    private List<ServiceConnection> pendingDelivery;
+
     public PorterServiceConnection(Porter.UserServiceArgs args) {
         this.componentName = args.componentName;
     }
@@ -101,23 +104,38 @@ class PorterServiceConnection implements UserServiceCallback {
         }
     }
 
+    /** Calls off a delivery that has not run yet, for a caller that no longer wants the binding. */
+    void cancelPendingDelivery() {
+        synchronized (PorterServiceConnections.LOCK) {
+            pendingDelivery = null;
+        }
+    }
+
     @Override
     public void died() {
         binder = null;
 
-        List<ServiceConnection> snapshot;
         synchronized (PorterServiceConnections.LOCK) {
             // One binder carries a recipient per "connected" push, so its death arrives repeatedly.
             if (terminal) return;
             terminal = true;
-            snapshot = new ArrayList<>(connections);
+            pendingDelivery = new ArrayList<>(connections);
             connections.clear();
-            PorterServiceConnections.remove(this);
+            PorterServiceConnections.retire(this);
 
             // Queued while the eviction is still private to this thread: a rebind has to take this
             // same lock to register, so its "connected" cannot reach the queue ahead of this
             // disconnect. Posting is not executing, the body runs later and outside the lock.
             MAIN_HANDLER.post(() -> {
+                        List<ServiceConnection> snapshot;
+                        synchronized (PorterServiceConnections.LOCK) {
+                            snapshot = pendingDelivery;
+                            pendingDelivery = null;
+                            PorterServiceConnections.deliveryDone(this);
+                        }
+
+                        if (snapshot == null) return;
+
                         for (ServiceConnection conn : snapshot) {
                             conn.onServiceDisconnected(componentName);
                         }
