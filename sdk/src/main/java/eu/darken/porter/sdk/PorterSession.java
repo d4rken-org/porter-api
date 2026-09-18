@@ -2,6 +2,7 @@ package eu.darken.porter.sdk;
 
 import static eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE;
 
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.IBinder;
 import android.os.RemoteException;
@@ -9,6 +10,9 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.annotation.VisibleForTesting;
+
+import eu.darken.porter.protocol.PorterProtocol;
 
 /**
  * One connection to one server binder: what its attach reply said, what the server has pushed since,
@@ -38,6 +42,22 @@ final class PorterSession {
     private static PorterSession latest;
     /** Never reset, so a session of this process is never mistaken for a later one. */
     private static int connections;
+
+    /**
+     * The wire this process takes a server delivery on. Kept out of {@link PorterBackend}, which
+     * {@link PorterServerInfo#backend} publishes and which describes a connection that exists.
+     */
+    enum Selection {
+        PORTER,
+        SHIZUKU,
+        /** Neither manager is reachable, so no delivery is taken at all. */
+        NONE
+    }
+
+    /** The answer a live connection was selected on, or the last one resolved. Guarded by SESSION_LOCK. */
+    private static Selection selection;
+    /** What a test pins the answer to. Guarded by SESSION_LOCK. */
+    private static Selection selectionForTest;
 
     private final int generation;
     private final IBinder binder;
@@ -102,8 +122,30 @@ final class PorterSession {
                 : new PorterProtocolWire(binder, new SessionCallbacks());
     }
 
+    /**
+     * A delivery from a server, which this process takes only on the backend it selected. Arrival
+     * order therefore never decides which server an app talks to, and neither does a death.
+     */
+    static void onBinderReceived(@NonNull Context context, @Nullable IBinder newBinder,
+                                 String packageName, @NonNull PorterBackend backend) {
+        // Resolving asks the package manager, so it happens before the lock; the answer decides
+        // nothing until it is checked inside, against the connection that is published then.
+        Selection selected = newBinder == null ? null : selectBackend(context);
+        onBinderReceived(newBinder, packageName, backend, selected);
+    }
+
     static void onBinderReceived(@Nullable IBinder newBinder, String packageName,
                                  @NonNull PorterBackend backend) {
+        onBinderReceived(newBinder, packageName, backend, null);
+    }
+
+    /**
+     * @param selected the backend this process resolved for this delivery, or null where the caller
+     *                 delivers a binder it already knows this process is entitled to take.
+     */
+    private static void onBinderReceived(@Nullable IBinder newBinder, String packageName,
+                                         @NonNull PorterBackend backend,
+                                         @Nullable Selection selected) {
         if (newBinder == null) {
             dropCurrent();
             return;
@@ -116,6 +158,17 @@ final class PorterSession {
             // replacement that is attaching, so the published connection counts as well as latest.
             if (current != null && current.binder == newBinder) return;
             if (latest != null && latest.binder == newBinder) return;
+
+            // A live connection is the answer, whoever delivers and however the delivery got here:
+            // no path replaces the server an app is talking to with one on the other backend.
+            if (current != null && current.backend != backend) {
+                Log.i(TAG, "ignoring a " + backend + " binder, connected on " + current.backend);
+                return;
+            }
+            if (selected != null && selected != selectionOf(backend)) {
+                Log.i(TAG, "ignoring a " + backend + " binder, this process selected " + selected);
+                return;
+            }
 
             session = new PorterSession(++connections, newBinder, backend);
             latest = session;
@@ -137,6 +190,10 @@ final class PorterSession {
                     PorterSession previous = current;
                     if (previous != null && previous != session) previous.unlink();
                     current = session;
+                    // A published connection names this process's selection rather than only being
+                    // constrained by it, so whatever was resolved before it published cannot leave
+                    // the process answering for a backend it is not connected on.
+                    selection = selectionOf(session.backend);
                 }
             }
             if (superseded) {
@@ -390,10 +447,94 @@ final class PorterSession {
         }
     }
 
+    /**
+     * Which backend this process accepts a delivery on: Porter whenever any visible package claims
+     * Porter's permission, otherwise Shizuku when one claims Shizuku's and the optional
+     * {@code shizuku-compat} artifact is on the classpath, otherwise nothing at all.
+     *
+     * <p>Held constant while a connection is live, and resolved again whenever there is none: a
+     * running connection never changes backend, and a process that has none sees an install that
+     * happened after it last asked.
+     */
+    @NonNull
+    static Selection selectBackend(@NonNull Context context) {
+        Selection pinned;
+        synchronized (SESSION_LOCK) {
+            if (selectionForTest != null) return selectionForTest;
+            pinned = current != null ? selection : null;
+        }
+        if (pinned != null) return pinned;
+
+        // Resolved outside the lock, because it asks the package manager, which is a binder call.
+        Selection resolved = resolve(context);
+        synchronized (SESSION_LOCK) {
+            // A connection that published while this was resolving keeps what it was selected on,
+            // and names the answer itself where nothing was recorded: the resolved value lost the
+            // race, and writing it would leave this process answering for the other backend.
+            if (current != null) {
+                if (selection == null) selection = selectionOf(current.backend);
+                return selection;
+            }
+            selection = resolved;
+            return resolved;
+        }
+    }
+
+    @NonNull
+    private static Selection resolve(@NonNull Context context) {
+        if (permissionOwner(context, PorterProtocol.PERMISSION) != null) return Selection.PORTER;
+        // Without the compat artifact no Shizuku binder can be unwrapped, so a Shizuku server this
+        // app cannot receive from is not a backend to wait for.
+        if (ShizukuCompat.isPresent()
+                && permissionOwner(context, ShizukuProtocol.PERMISSION) != null) {
+            return Selection.SHIZUKU;
+        }
+        return Selection.NONE;
+    }
+
+    /**
+     * Takes {@code backend} as this process's selection, for a binder another process of this app
+     * already selected and is using. Whoever asks next reads that instead of deciding again, unless
+     * this process has a connection of its own, which answers for itself.
+     */
+    static void adoptBackend(@NonNull PorterBackend backend) {
+        synchronized (SESSION_LOCK) {
+            // A connection of this process is already the answer; another process's is not a reason
+            // to move the selection off the backend this one is connected on.
+            if (current != null) return;
+            selection = selectionOf(backend);
+        }
+    }
+
+    @NonNull
+    private static Selection selectionOf(@NonNull PorterBackend backend) {
+        return backend == PorterBackend.SHIZUKU ? Selection.SHIZUKU : Selection.PORTER;
+    }
+
+    /** The package declaring {@code permission}, or null where no package this app can see does. */
+    @Nullable
+    static String permissionOwner(@NonNull Context context, @NonNull String permission) {
+        try {
+            return context.getPackageManager().getPermissionInfo(permission, 0).packageName;
+        } catch (PackageManager.NameNotFoundException e) {
+            return null;
+        }
+    }
+
+    /** Pins the selection a test runs against; {@link Porter#resetForTest()} clears it. */
+    @VisibleForTesting
+    static void selectBackendForTest(@Nullable Selection pinned) {
+        synchronized (SESSION_LOCK) {
+            selectionForTest = pinned;
+        }
+    }
+
     static void resetForTest() {
         synchronized (SESSION_LOCK) {
             current = null;
             latest = null;
+            selection = null;
+            selectionForTest = null;
         }
     }
 }

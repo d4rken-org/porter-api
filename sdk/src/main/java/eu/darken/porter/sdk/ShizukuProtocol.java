@@ -14,6 +14,10 @@ final class ShizukuProtocol {
     static final String APPLICATION_DESCRIPTOR = "moe.shizuku.server.IShizukuApplication";
     static final String SERVICE_CONNECTION_DESCRIPTOR = "moe.shizuku.server.IShizukuServiceConnection";
 
+    /** The canonical manager, and the permission it declares. */
+    static final String MANAGER_APPLICATION_ID = "moe.shizuku.privileged.api";
+    static final String PERMISSION = "moe.shizuku.manager.permission.API_V23";
+
     /** What attach declares this client to be. */
     static final int CLIENT_API_VERSION = 13;
     /** A server below this is refused rather than spoken to on an older encoding. */

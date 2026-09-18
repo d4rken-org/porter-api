@@ -31,12 +31,14 @@ public final class Porter {
     /** Announces a binder that speaks Porter's own wire. */
     @RestrictTo(LIBRARY_GROUP_PREFIX)
     public static void onBinderReceived(@Nullable IBinder newBinder, String packageName) {
-        onBinderReceived(newBinder, packageName, PorterBackend.PORTER);
+        // No Context to select with, and nothing to select: this wire is Porter's by construction.
+        PorterSession.onBinderReceived(newBinder, packageName, PorterBackend.PORTER);
     }
 
-    static void onBinderReceived(@Nullable IBinder newBinder, String packageName,
-                                 @NonNull PorterBackend backend) {
-        PorterSession.onBinderReceived(newBinder, packageName, backend);
+    /** A delivery from a server, which is taken only on the backend this process selected. */
+    static void onBinderReceived(@NonNull Context context, @Nullable IBinder newBinder,
+                                 String packageName, @NonNull PorterBackend backend) {
+        PorterSession.onBinderReceived(context, newBinder, packageName, backend);
     }
 
     public interface OnBinderReceivedListener {
@@ -89,6 +91,12 @@ public final class Porter {
     private static final List<ListenerHolder<OnBinderReceivedListener>> PENDING_STICKY = new ArrayList<>();
     private static final List<ListenerHolder<OnBinderDeadListener>> DEAD_LISTENERS = new ArrayList<>();
     private static final List<ListenerHolder<OnRequestPermissionResultListener>> PERMISSION_LISTENERS = new ArrayList<>();
+    /**
+     * What the SDK itself does once every dead listener has been told, which is where the SDK's own
+     * reaction to a death belongs: a listener would be told in registration order, ahead of an app
+     * that registered its listeners later. Guarded by the listener monitor.
+     */
+    private static final List<Runnable> POST_DEAD_HOOKS = new ArrayList<>();
     private static final Handler MAIN_HANDLER = new Handler(Looper.getMainLooper());
 
     /** Runs {@code delivery} on {@code handler}, or on the main thread when there is none. */
@@ -213,13 +221,31 @@ public final class Porter {
         }
     }
 
+    /** Runs on the main thread after every dead listener of that death has been told. */
+    static void addPostBinderDeadHook(@NonNull Runnable hook) {
+        synchronized (RECEIVED_LISTENERS) {
+            POST_DEAD_HOOKS.add(Objects.requireNonNull(hook));
+        }
+    }
+
     static void scheduleBinderDeadListeners() {
         List<ListenerHolder<OnBinderDeadListener>> listeners;
+        List<Runnable> hooks;
         synchronized (RECEIVED_LISTENERS) {
             listeners = new ArrayList<>(DEAD_LISTENERS);
+            hooks = new ArrayList<>(POST_DEAD_HOOKS);
         }
-        for (ListenerHolder<OnBinderDeadListener> holder : listeners) {
-            deliver(holder.handler, holder.listener::onBinderDead);
+        try {
+            for (ListenerHolder<OnBinderDeadListener> holder : listeners) {
+                deliver(holder.handler, holder.listener::onBinderDead);
+            }
+        } finally {
+            // The hooks go on the main queue behind every listener delivery this dispatch has
+            // scheduled or run, rather than on the dispatching stack. A listener on a handler that
+            // is not the main looper asked for another thread and is not ordered against them.
+            for (Runnable hook : hooks) {
+                MAIN_HANDLER.post(hook);
+            }
         }
     }
 
@@ -293,29 +319,46 @@ public final class Porter {
     }
 
     /**
-     * Whether a Porter manager is installed, which is not whether its service is running: only
-     * {@link Availability#CONNECTED} says a binder answered.
+     * Whether the manager of the backend this process selected is installed, which is not whether
+     * its service is running: only {@link Availability#CONNECTED} says a binder answered.
      *
-     * <p>{@link Availability#INSTALLED_UNRECOGNIZED} means another package declares the permission.
-     * Do not name or launch that package without your own verification.
+     * <p>The backend is Porter whenever a package declares Porter's permission, and Shizuku when one
+     * declares Shizuku's and the optional {@code shizuku-compat} artifact is on the classpath. An app
+     * without that artifact can receive no Shizuku binder at all, so a Shizuku-only device reads
+     * {@link Availability#NOT_INSTALLED} rather than promising a connection it cannot make.
+     *
+     * <p>{@link Availability#INSTALLED_UNRECOGNIZED} means a package owns the selected backend's
+     * permission and is not the manager this SDK knows. Do not name or launch it without your own
+     * verification.
+     *
+     * <p>From API 30 this answers only about packages the app can see, and the SDK's manifest names
+     * {@code eu.darken.porter} and {@code moe.shizuku.privileged.api}. A manager published under some
+     * other package name may therefore read {@link Availability#NOT_INSTALLED} here.
      */
     @NonNull
     public static Availability getAvailability(@NonNull Context context) {
         if (pingBinder()) return Availability.CONNECTED;
 
-        String owner;
-        try {
-            owner = context.getPackageManager()
-                    .getPermissionInfo(PorterProtocol.PERMISSION, 0).packageName;
-        } catch (PackageManager.NameNotFoundException e) {
-            owner = null;
+        switch (PorterSession.selectBackend(context)) {
+            case PORTER:
+                return availabilityOf(context, PorterProtocol.PERMISSION,
+                        PorterProtocol.MANAGER_APPLICATION_ID);
+            case SHIZUKU:
+                return availabilityOf(context, ShizukuProtocol.PERMISSION,
+                        ShizukuProtocol.MANAGER_APPLICATION_ID);
+            default:
+                return Availability.NOT_INSTALLED;
         }
+    }
 
+    @NonNull
+    private static Availability availabilityOf(@NonNull Context context, @NonNull String permission,
+                                               @NonNull String manager) {
+        String owner = PorterSession.permissionOwner(context, permission);
         if (owner == null) return Availability.NOT_INSTALLED;
-        if (!PorterProtocol.MANAGER_APPLICATION_ID.equals(owner)) {
-            return Availability.INSTALLED_UNRECOGNIZED;
-        }
-        return Availability.INSTALLED_NOT_CONNECTED;
+        return manager.equals(owner)
+                ? Availability.INSTALLED_NOT_CONNECTED
+                : Availability.INSTALLED_UNRECOGNIZED;
     }
 
     /**
@@ -444,7 +487,8 @@ public final class Porter {
     /**
      * As {@link #bindUserService}, but does not start the service if it is not running.
      *
-     * @return the service version code if it is running, -1 if it is not
+     * @return what the server answers: -1 when the service is not running, and at this SDK's
+     * protocol floor the running service's version code on either backend
      */
     public static int peekUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnections.Registration registration = PorterServiceConnections.register(args, conn);
@@ -513,13 +557,21 @@ public final class Porter {
     }
 
     /**
+     * On the Shizuku backend the permission state is synthesized by the SDK from a server's re-sent
+     * attach state, because that wire carries no callback of its own for it. A server that never
+     * re-sends leaves a cached grant in place until its binder dies.
+     *
      * @return {@link PackageManager#PERMISSION_GRANTED} or {@link PackageManager#PERMISSION_DENIED}
      */
     public static int checkSelfPermission() {
         return PorterSession.require().checkSelfPermission();
     }
 
-    /** Whether to show a rationale before {@link #requestPermission(int)}. */
+    /**
+     * Whether to show a rationale before {@link #requestPermission(int)}.
+     *
+     * <p>On the Shizuku backend this is synthesized the same way {@link #checkSelfPermission()} is.
+     */
     public static boolean shouldShowRequestPermissionRationale() {
         return PorterSession.require().shouldShowRequestPermissionRationale();
     }
@@ -570,12 +622,14 @@ public final class Porter {
     @VisibleForTesting
     public static void resetForTest() {
         PorterSession.resetForTest();
+        ShizukuCompat.setPresentForTest(null);
         PorterServiceConnections.clearForTest();
         synchronized (RECEIVED_LISTENERS) {
             RECEIVED_LISTENERS.clear();
             PENDING_STICKY.clear();
             DEAD_LISTENERS.clear();
             PERMISSION_LISTENERS.clear();
+            POST_DEAD_HOOKS.clear();
         }
     }
 }

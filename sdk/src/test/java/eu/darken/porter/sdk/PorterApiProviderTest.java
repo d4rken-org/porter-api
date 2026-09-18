@@ -38,6 +38,8 @@ public class PorterApiProviderTest {
     public void setup() {
         context = RuntimeEnvironment.getApplication();
         provider = attached(new PorterApiProvider(), true, false);
+        // A server delivery is taken only on the selected backend, and nothing is installed here.
+        PorterSession.selectBackendForTest(PorterSession.Selection.PORTER);
     }
 
     @After
@@ -143,6 +145,7 @@ public class PorterApiProviderTest {
 
     @Test
     public void aSecondaryProcessFindsASessionOnTheShizukuAuthority() {
+        PorterSession.selectBackendForTest(PorterSession.Selection.SHIZUKU);
         PorterShizukuApiProvider shizuku = bothAuthorities();
         FakeShizukuService fake = new FakeShizukuService();
         shizuku.call(DELIVERY_METHOD_SEND_BINDER, null, shizukuDelivery(fake));
