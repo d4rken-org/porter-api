@@ -46,6 +46,7 @@ final class PorterSession {
 
     private int serverUid = -1;
     private int serverProtocolVersion = 0;
+    private Integer serverPatchVersion = null;
     private String serverContext = null;
     private long serverCapabilities = CAPABILITIES_NONE;
 
@@ -96,18 +97,15 @@ final class PorterSession {
         this.generation = generation;
         this.binder = binder;
         this.backend = backend;
-        this.wire = new PorterProtocolWire(binder, new SessionCallbacks());
+        this.wire = backend == PorterBackend.SHIZUKU
+                ? new ShizukuProtocolWire(binder, new SessionCallbacks())
+                : new PorterProtocolWire(binder, new SessionCallbacks());
     }
 
     static void onBinderReceived(@Nullable IBinder newBinder, String packageName,
                                  @NonNull PorterBackend backend) {
         if (newBinder == null) {
             dropCurrent();
-            return;
-        }
-
-        if (backend != PorterBackend.PORTER) {
-            Log.w(TAG, "binder from " + backend + " discarded: no wire speaks that backend yet");
             return;
         }
 
@@ -326,7 +324,7 @@ final class PorterSession {
 
     @NonNull
     PorterServerInfo serverInfo() {
-        return new PorterServerInfo(backend, serverProtocolVersion, null);
+        return new PorterServerInfo(backend, serverProtocolVersion, serverPatchVersion);
     }
 
     String seLinuxContext() {
@@ -344,6 +342,7 @@ final class PorterSession {
     private void apply(@NonNull PorterWire.AttachReply reply, int pushes) {
         serverUid = reply.serverUid;
         serverProtocolVersion = reply.protocolVersion;
+        serverPatchVersion = reply.patchVersion;
         serverContext = reply.seLinuxContext;
         serverCapabilities = reply.capabilities;
         synchronized (permissionLock) {
