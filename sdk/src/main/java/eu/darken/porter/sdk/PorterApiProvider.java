@@ -1,9 +1,7 @@
 package eu.darken.porter.sdk;
 
-import static eu.darken.porter.protocol.PorterProtocol.DELIVERY_EXTRA_BINDER;
 import static eu.darken.porter.protocol.PorterProtocol.DELIVERY_METHOD_GET_BINDER;
 import static eu.darken.porter.protocol.PorterProtocol.DELIVERY_METHOD_SEND_BINDER;
-import static eu.darken.porter.protocol.PorterProtocol.PROVIDER_AUTHORITY_SUFFIX;
 
 import android.content.BroadcastReceiver;
 import android.content.ContentProvider;
@@ -87,23 +85,34 @@ public class PorterApiProvider extends ContentProvider {
         fetchBinderFromProvider(context);
     }
 
-    private static void fetchBinderFromProvider(@NonNull Context context) {
+    /**
+     * Asks every authority a server can have delivered to, because the session this process is
+     * looking for is on whichever backend the provider process attached.
+     */
+    static boolean fetchBinderFromProvider(@NonNull Context context) {
+        if (fetchThrough(context, PorterProtocolDelivery.INSTANCE)) return true;
+        // ShizukuProtocolDelivery names the container as a type, so the class cannot load at all
+        // where the optional artifact is absent.
+        return ShizukuCompat.isPresent() && fetchThrough(context, ShizukuProtocolDelivery.INSTANCE);
+    }
+
+    static boolean fetchThrough(@NonNull Context context, @NonNull PorterDelivery delivery) {
         Bundle reply;
         try {
             reply = context.getContentResolver().call(
-                    Uri.parse("content://" + context.getPackageName() + PROVIDER_AUTHORITY_SUFFIX),
+                    Uri.parse("content://" + context.getPackageName() + delivery.authoritySuffix()),
                     DELIVERY_METHOD_GET_BINDER, null, new Bundle());
         } catch (Throwable tr) {
             reply = null;
         }
 
-        if (reply != null) {
-            IBinder binder = reply.getBinder(DELIVERY_EXTRA_BINDER);
-            if (binder != null) {
-                Log.i(TAG, "Binder received from other process");
-                Porter.onBinderReceived(binder, context.getPackageName());
-            }
-        }
+        if (reply == null) return false;
+        IBinder binder = delivery.readBinder(reply);
+        if (binder == null) return false;
+
+        Log.i(TAG, "Binder received from other process");
+        Porter.onBinderReceived(binder, context.getPackageName(), delivery.backend());
+        return true;
     }
 
     /** The envelope this provider speaks; a subclass overrides it to answer another authority. */
