@@ -6,16 +6,17 @@ apply from: "manifest.gradle"
 
 def sdkVersion = providers.gradleProperty("version")
         .orElse(providers.environmentVariable("VERSION")).getOrElse("0.2.0")
-def publishedModules = ["protocol", "sdk", "shizuku-compat"]
+def publishedModules = ["protocol", "sdk", "sdk-extras", "shizuku-compat"]
 def licenseDetails = [
         "Apache-2.0": ["Apache License 2.0", "https://www.apache.org/licenses/LICENSE-2.0"],
         "MIT"       : ["MIT License", "https://opensource.org/license/mit"],
 ]
-// sdk carries MIT next to Apache-2.0 because some of its classes derive from the
-// upstream Shizuku API; shizuku-compat is upstream code and is MIT alone.
+// sdk and sdk-extras carry MIT next to Apache-2.0 because some of their classes derive
+// from the upstream Shizuku API; shizuku-compat is upstream code and is MIT alone.
 def moduleLicenses = [
         "protocol"      : ["Apache-2.0"],
         "sdk"           : ["Apache-2.0", "MIT"],
+        "sdk-extras"    : ["Apache-2.0", "MIT"],
         "shizuku-compat": ["MIT"],
 ]
 
