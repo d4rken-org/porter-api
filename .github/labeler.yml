@@ -27,6 +27,7 @@
           - "api/**"
           - "provider/**"
           - "sdk/**"
+          - "sdk-extras/**"
           - "shizuku-compat/**"
 
 "c: Service":

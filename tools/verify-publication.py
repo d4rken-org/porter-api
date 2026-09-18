@@ -11,10 +11,11 @@ root = Path(sys.argv[1]) / 'com/github/d4rken-org/porter-api'
 version = sys.argv[2]
 group = 'com.github.d4rken-org.porter-api'
 # Module to the same-group dependencies it may declare.
-modules = {'protocol': set(), 'sdk': {'protocol'}, 'shizuku-compat': set()}
+modules = {'protocol': set(), 'sdk': {'protocol'}, 'sdk-extras': {'sdk'}, 'shizuku-compat': set()}
 declared_licenses = {
     'protocol': {'Apache License 2.0'},
     'sdk': {'Apache License 2.0', 'MIT License'},
+    'sdk-extras': {'Apache License 2.0', 'MIT License'},
     'shizuku-compat': {'MIT License'},
 }
 # Classes a module may ship outside eu/darken/porter/, spelled out one by one.
