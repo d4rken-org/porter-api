@@ -5,6 +5,7 @@ import static eu.darken.porter.protocol.PorterProtocol.DELIVERY_METHOD_GET_BINDE
 import static eu.darken.porter.protocol.PorterProtocol.DELIVERY_METHOD_SEND_BINDER;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -25,7 +26,7 @@ import org.robolectric.annotation.Config;
 
 import moe.shizuku.api.BinderContainer;
 
-/** The Shizuku envelope at the Shizuku authority, and where this increment stops short of using it. */
+/** The Shizuku envelope at the Shizuku authority, and the session a binder delivered there opens. */
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 34, manifest = Config.NONE)
 public class PorterShizukuApiProviderTest {
@@ -96,7 +97,27 @@ public class PorterShizukuApiProviderTest {
     }
 
     @Test
-    public void aBinderDeliveredOnTheShizukuAuthorityIsNotPublished() {
+    public void aBinderDeliveredOnTheShizukuAuthorityAttaches() {
+        FakeShizukuService fake = new FakeShizukuService();
+        fake.bindApplicationReply = FakeShizukuService.replyWithVersion(14);
+
+        provider.call(DELIVERY_METHOD_SEND_BINDER, null, shizukuDelivery(fake));
+
+        assertTrue(Porter.pingBinder());
+        assertEquals(PorterBackend.SHIZUKU, PorterSession.currentBackend());
+        PorterServerInfo info = Porter.getServerInfo();
+        assertNotNull(info);
+        assertEquals(PorterBackend.SHIZUKU, info.backend);
+        assertEquals(14, info.version);
+    }
+
+    /**
+     * The Porter stub rejects the Shizuku interface token at attach, and the session is abandoned on
+     * what that throws. The failure is immediate only because the parcel enforces the token; without
+     * that enforcement this would sit on the attach timeout instead.
+     */
+    @Test
+    public void aBinderThatDoesNotSpeakShizukuIsNotPublished() {
         provider.call(DELIVERY_METHOD_SEND_BINDER, null, shizukuDelivery(new FakePorterService()));
 
         assertFalse(Porter.pingBinder());

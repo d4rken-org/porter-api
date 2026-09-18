@@ -15,6 +15,7 @@ import static org.junit.Assert.assertTrue;
 import android.content.Context;
 import android.content.pm.ProviderInfo;
 import android.os.Bundle;
+import android.os.IBinder;
 
 import org.junit.After;
 import org.junit.Before;
@@ -23,6 +24,7 @@ import org.junit.runner.RunWith;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowContentResolver;
 
 /** The receiving half of binder delivery: what the provider hands to {@link Porter} and back out. */
 @RunWith(RobolectricTestRunner.class)
@@ -52,10 +54,34 @@ public class PorterApiProviderTest {
         return provider;
     }
 
-    private static Bundle delivery(android.os.IBinder binder) {
+    private static Bundle delivery(IBinder binder) {
         Bundle extras = new Bundle();
         extras.putBinder(DELIVERY_EXTRA_BINDER, binder);
         return extras;
+    }
+
+    private static Bundle shizukuDelivery(IBinder binder) {
+        Bundle extras = new Bundle();
+        ShizukuProtocolDelivery.INSTANCE.writeBinder(extras, binder);
+        return extras;
+    }
+
+    /**
+     * Both authorities answerable, as an app declaring the Shizuku provider alongside the built-in
+     * one has them. A secondary process reaches whichever of the two the server delivered to.
+     */
+    private PorterShizukuApiProvider bothAuthorities() {
+        ShadowContentResolver.registerProviderInternal(
+                context.getPackageName() + PROVIDER_AUTHORITY_SUFFIX, provider);
+
+        PorterShizukuApiProvider shizuku = new PorterShizukuApiProvider();
+        ProviderInfo info = new ProviderInfo();
+        info.authority = context.getPackageName() + ShizukuProtocolDelivery.INSTANCE.authoritySuffix();
+        info.exported = true;
+        info.multiprocess = false;
+        shizuku.attachInfo(context, info);
+        ShadowContentResolver.registerProviderInternal(info.authority, shizuku);
+        return shizuku;
     }
 
     @Test
@@ -113,6 +139,30 @@ public class PorterApiProviderTest {
     public void theProviderDeclarationIsEnforced() {
         assertThrows(IllegalStateException.class, () -> attached(new PorterApiProvider(), true, true));
         assertThrows(IllegalStateException.class, () -> attached(new PorterApiProvider(), false, false));
+    }
+
+    @Test
+    public void aSecondaryProcessFindsASessionOnTheShizukuAuthority() {
+        PorterShizukuApiProvider shizuku = bothAuthorities();
+        FakeShizukuService fake = new FakeShizukuService();
+        shizuku.call(DELIVERY_METHOD_SEND_BINDER, null, shizukuDelivery(fake));
+
+        assertTrue(PorterApiProvider.fetchBinderFromProvider(context));
+
+        assertSame(fake, Porter.getBinder());
+        assertEquals(PorterBackend.SHIZUKU, PorterSession.currentBackend());
+    }
+
+    @Test
+    public void aSecondaryProcessStillFindsASessionOnPortersAuthority() {
+        bothAuthorities();
+        FakePorterService fake = new FakePorterService();
+        provider.call(DELIVERY_METHOD_SEND_BINDER, null, delivery(fake));
+
+        assertTrue(PorterApiProvider.fetchBinderFromProvider(context));
+
+        assertSame(fake, Porter.getBinder());
+        assertEquals(PorterBackend.PORTER, PorterSession.currentBackend());
     }
 
     /**

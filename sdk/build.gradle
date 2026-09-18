@@ -21,6 +21,8 @@ dependencies {
 
     implementation "androidx.annotation:annotation:1.3.0"
 
+    // Test-only: the generated Shizuku stubs decode what the Shizuku wire encodes by hand.
+    testImplementation project(":aidl")
     testImplementation project(":shizuku-compat")
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.robolectric:robolectric:4.16.1"
