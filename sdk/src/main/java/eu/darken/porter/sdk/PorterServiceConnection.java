@@ -30,11 +30,16 @@ class PorterServiceConnection implements UserServiceCallback {
     }
 
     private boolean dead = false;
+    /** Counts the changes to {@link #connections}, so a queued death can tell it is stale. */
+    private int generation = 0;
 
-    public void addConnection(@Nullable ServiceConnection conn) {
-        if (conn != null) {
-            connections.add(conn);
-        }
+    /** @return whether {@code conn} was not registered already */
+    public boolean addConnection(@Nullable ServiceConnection conn) {
+        if (conn == null || !connections.add(conn)) return false;
+        generation++;
+        // A registration made after a death is a live binding again, and is owed a later one.
+        dead = false;
+        return true;
     }
 
     public void removeConnection(@Nullable ServiceConnection conn) {
@@ -44,6 +49,7 @@ class PorterServiceConnection implements UserServiceCallback {
     }
 
     public void clearConnections() {
+        generation++;
         connections.clear();
     }
 
@@ -88,7 +94,12 @@ class PorterServiceConnection implements UserServiceCallback {
         if (dead) return;
         dead = true;
 
+        // A rebind can land before this runs. It is then a binding of its own, and the death
+        // belongs to the one it replaced: telling it would disconnect a caller nothing happened to.
+        int atDeath = generation;
         MAIN_HANDLER.post(() -> {
+                    if (generation != atDeath) return;
+
                     for (ServiceConnection conn : connections) {
                         conn.onServiceDisconnected(componentName);
                     }

@@ -1,6 +1,7 @@
 package eu.darken.porter.sdk;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -14,7 +15,7 @@ class PorterServiceConnections {
 
     @NonNull
     static PorterServiceConnection get(Porter.UserServiceArgs args) {
-        String key = args.tag != null ? args.tag : args.componentName.getClassName();
+        String key = key(args);
         PorterServiceConnection connection = CACHE.get(key);
 
         if (connection == null) {
@@ -22,6 +23,16 @@ class PorterServiceConnections {
             CACHE.put(key, connection);
         }
         return connection;
+    }
+
+    /** The cached connection for {@code args}, and null when nothing is bound under it. */
+    @Nullable
+    static PorterServiceConnection peek(Porter.UserServiceArgs args) {
+        return CACHE.get(key(args));
+    }
+
+    private static String key(Porter.UserServiceArgs args) {
+        return args.tag != null ? args.tag : args.componentName.getClassName();
     }
 
     static void remove(PorterServiceConnection connection) {
@@ -34,5 +45,9 @@ class PorterServiceConnections {
         for (String key : keys) {
             CACHE.remove(key);
         }
+    }
+
+    static void clearForTest() {
+        CACHE.clear();
     }
 }
