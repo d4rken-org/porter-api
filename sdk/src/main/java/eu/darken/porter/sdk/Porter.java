@@ -431,8 +431,15 @@ public final class Porter {
      */
     public static void bindUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnection connection = PorterServiceConnections.get(args);
-        connection.addConnection(conn);
-        requireWire().addUserService(connection, args, false);
+        boolean registered = connection.addConnection(conn);
+        try {
+            requireWire().addUserService(connection, args, false);
+        } catch (RuntimeException e) {
+            // Only what this call registered: an earlier bind of the same ServiceConnection is a
+            // registration of its own, and the server holds no ServiceConnection to undo.
+            if (registered) connection.removeConnection(conn);
+            throw e;
+        }
     }
 
     /**
@@ -442,8 +449,13 @@ public final class Porter {
      */
     public static int peekUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnection connection = PorterServiceConnections.get(args);
-        connection.addConnection(conn);
-        return requireWire().addUserService(connection, args, true);
+        boolean registered = connection.addConnection(conn);
+        try {
+            return requireWire().addUserService(connection, args, true);
+        } catch (RuntimeException e) {
+            if (registered) connection.removeConnection(conn);
+            throw e;
+        }
     }
 
     /**
@@ -453,7 +465,16 @@ public final class Porter {
     public static void unbindUserService(
             @NonNull UserServiceArgs args, @Nullable ServiceConnection conn, boolean remove) {
         if (remove) {
-            requireWire().removeUserService(null /* (unused) */, args, true);
+            // Nothing is bound here when the caller only ever asked for the kill.
+            PorterServiceConnection killed = PorterServiceConnections.peek(args);
+            try {
+                requireWire().removeUserService(null /* (unused) */, args, true);
+            } finally {
+                if (killed != null) {
+                    killed.clearConnections();
+                    PorterServiceConnections.remove(killed);
+                }
+            }
             return;
         }
 
@@ -463,9 +484,12 @@ public final class Porter {
          * on the server first, then locally.
          */
         PorterServiceConnection connection = PorterServiceConnections.get(args);
-        requireWire().removeUserService(connection, args, false);
-        connection.clearConnections();
-        PorterServiceConnections.remove(connection);
+        try {
+            requireWire().removeUserService(connection, args, false);
+        } finally {
+            connection.clearConnections();
+            PorterServiceConnections.remove(connection);
+        }
     }
 
     /**
@@ -556,6 +580,7 @@ public final class Porter {
     @VisibleForTesting
     public static void resetForTest() {
         PorterSession.resetForTest();
+        PorterServiceConnections.clearForTest();
         synchronized (RECEIVED_LISTENERS) {
             RECEIVED_LISTENERS.clear();
             PENDING_STICKY.clear();
