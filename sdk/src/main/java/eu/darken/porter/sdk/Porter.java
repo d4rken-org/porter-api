@@ -430,14 +430,13 @@ public final class Porter {
      * @see UserServiceArgs
      */
     public static void bindUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
-        PorterServiceConnection connection = PorterServiceConnections.get(args);
-        PorterServiceConnection.Registration registration = connection.addConnection(conn);
+        PorterServiceConnections.Registration registration = PorterServiceConnections.register(args, conn);
         try {
-            requireWire().addUserService(connection, args, false);
+            requireWire().addUserService(registration.connection, args, false);
         } catch (RuntimeException e) {
-            // A refused bind never became a binding, so it has no claim on anything the binding it
-            // registered over is owed.
-            connection.undo(registration, conn);
+            // Removes the registration this call made, and no lifecycle state: a death either
+            // happened, in which case the binding is retired and evicted, or it did not.
+            if (registration.inserted) registration.connection.removeConnection(conn);
             throw e;
         }
     }
@@ -448,12 +447,11 @@ public final class Porter {
      * @return the service version code if it is running, -1 if it is not
      */
     public static int peekUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
-        PorterServiceConnection connection = PorterServiceConnections.get(args);
-        PorterServiceConnection.Registration registration = connection.addConnection(conn);
+        PorterServiceConnections.Registration registration = PorterServiceConnections.register(args, conn);
         try {
-            return requireWire().addUserService(connection, args, true);
+            return requireWire().addUserService(registration.connection, args, true);
         } catch (RuntimeException e) {
-            connection.undo(registration, conn);
+            if (registration.inserted) registration.connection.removeConnection(conn);
             throw e;
         }
     }
@@ -465,16 +463,7 @@ public final class Porter {
     public static void unbindUserService(
             @NonNull UserServiceArgs args, @Nullable ServiceConnection conn, boolean remove) {
         if (remove) {
-            // Nothing is bound here when the caller only ever asked for the kill.
-            PorterServiceConnection killed = PorterServiceConnections.peek(args);
-            try {
-                requireWire().removeUserService(null /* (unused) */, args, true);
-            } finally {
-                if (killed != null) {
-                    killed.clearConnections();
-                    PorterServiceConnections.remove(killed);
-                }
-            }
+            requireWire().removeUserService(null /* (unused) */, args, true);
             return;
         }
 

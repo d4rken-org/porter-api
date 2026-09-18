@@ -1,20 +1,59 @@
 package eu.darken.porter.sdk;
 
+import android.content.ServiceConnection;
+
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 class PorterServiceConnections {
 
-    private static final Map<String, PorterServiceConnection> CACHE = Collections.synchronizedMap(new HashMap<>());
+    /**
+     * Guards {@link #CACHE} and, in every {@link PorterServiceConnection}, its set of registered
+     * {@link ServiceConnection}s and its terminal flag.
+     */
+    static final Object LOCK = new Object();
+
+    private static final Map<String, PorterServiceConnection> CACHE = new HashMap<>();
 
     @NonNull
     static PorterServiceConnection get(Porter.UserServiceArgs args) {
+        synchronized (LOCK) {
+            return lookupOrCreate(args);
+        }
+    }
+
+    /** A connection and whether the registration that produced it inserted the callback. */
+    static final class Registration {
+
+        final PorterServiceConnection connection;
+        final boolean inserted;
+
+        private Registration(PorterServiceConnection connection, boolean inserted) {
+            this.connection = connection;
+            this.inserted = inserted;
+        }
+    }
+
+    /**
+     * Looks up or creates the connection for {@code args} and registers {@code conn} on it, as one
+     * locked operation: a bind arriving after a death finds no cached instance and gets a fresh
+     * one, with no window in which it could register on the instance that just died.
+     */
+    @NonNull
+    static Registration register(Porter.UserServiceArgs args, @Nullable ServiceConnection conn) {
+        synchronized (LOCK) {
+            PorterServiceConnection connection = lookupOrCreate(args);
+            return new Registration(connection, connection.addConnection(conn));
+        }
+    }
+
+    @NonNull
+    private static PorterServiceConnection lookupOrCreate(Porter.UserServiceArgs args) {
         String key = key(args);
         PorterServiceConnection connection = CACHE.get(key);
 
@@ -28,7 +67,9 @@ class PorterServiceConnections {
     /** The cached connection for {@code args}, and null when nothing is bound under it. */
     @Nullable
     static PorterServiceConnection peek(Porter.UserServiceArgs args) {
-        return CACHE.get(key(args));
+        synchronized (LOCK) {
+            return CACHE.get(key(args));
+        }
     }
 
     private static String key(Porter.UserServiceArgs args) {
@@ -36,18 +77,22 @@ class PorterServiceConnections {
     }
 
     static void remove(PorterServiceConnection connection) {
-        List<String> keys = new ArrayList<>();
-        for (Map.Entry<String, PorterServiceConnection> entry : CACHE.entrySet()) {
-            if (entry.getValue() == connection) {
-                keys.add(entry.getKey());
+        synchronized (LOCK) {
+            List<String> keys = new ArrayList<>();
+            for (Map.Entry<String, PorterServiceConnection> entry : CACHE.entrySet()) {
+                if (entry.getValue() == connection) {
+                    keys.add(entry.getKey());
+                }
             }
-        }
-        for (String key : keys) {
-            CACHE.remove(key);
+            for (String key : keys) {
+                CACHE.remove(key);
+            }
         }
     }
 
     static void clearForTest() {
-        CACHE.clear();
+        synchronized (LOCK) {
+            CACHE.clear();
+        }
     }
 }
