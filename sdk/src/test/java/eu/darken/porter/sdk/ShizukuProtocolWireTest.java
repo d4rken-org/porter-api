@@ -18,9 +18,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.mock;
 
-import android.content.ComponentName;
 import android.content.pm.PackageManager;
 import android.os.Binder;
 import android.os.Bundle;
@@ -271,17 +269,5 @@ public class ShizukuProtocolWireTest {
         assertNotNull(fake.confirmationData);
         assertTrue(fake.confirmationData.getBoolean(REQUEST_PERMISSION_REPLY_ALLOWED));
         assertFalse(fake.confirmationData.getBoolean(REQUEST_PERMISSION_REPLY_IS_ONETIME));
-    }
-
-    @Test
-    public void userServicesAreNotSupportedYet() {
-        ShizukuProtocolWire wire = new ShizukuProtocolWire(new FakeShizukuService(), callbacks);
-        UserServiceCallback callback = mock(UserServiceCallback.class);
-        Porter.UserServiceArgs args = new Porter.UserServiceArgs(new ComponentName("p", "C"));
-
-        assertThrows(UnsupportedOperationException.class,
-                () -> wire.addUserService(callback, args, false));
-        assertThrows(UnsupportedOperationException.class,
-                () -> wire.removeUserService(callback, args, false));
     }
 }
