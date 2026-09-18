@@ -2,7 +2,7 @@ package eu.darken.porter.sdk;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertSame;
+import static org.junit.Assert.assertNotSame;
 
 import android.content.ComponentName;
 import android.content.ServiceConnection;
@@ -52,7 +52,7 @@ public class RedDeathDeliveredToASameConnectionRebindTest {
     }
 
     @Test
-    public void aRebindOfTheSameConnectionSurvivesTheDeathItOvertook() {
+    public void aRebindOfTheSameConnectionDoesNotSwallowTheDeathItOvertook() {
         Porter.onBinderReceived(new FakePorterService(), PACKAGE);
         Porter.UserServiceArgs args = args("death-then-same-connection-rebind");
 
@@ -71,10 +71,15 @@ public class RedDeathDeliveredToASameConnectionRebindTest {
 
         ShadowLooper.shadowMainLooper().idle();
 
-        assertEquals("the rebound caller was told its new binding died", 0, conn.disconnects);
-        assertSame("the rebound caller's binding was dropped", connection, PorterServiceConnections.peek(args));
+        assertEquals("the caller was never told the binder it was connected to died",
+                1, conn.disconnects);
 
-        connection.connected(new Binder());
+        PorterServiceConnection rebound = PorterServiceConnections.peek(args);
+        assertNotNull("the rebind was left without a binding", rebound);
+        assertNotSame("the rebind was handed back the binding the death retired",
+                connection, rebound);
+
+        rebound.connected(new Binder());
         ShadowLooper.shadowMainLooper().idle();
         assertEquals("the rebound caller never heard about its new binding", 2, conn.connects);
     }

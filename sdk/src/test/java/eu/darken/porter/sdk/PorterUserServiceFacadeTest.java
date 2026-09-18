@@ -3,6 +3,7 @@ package eu.darken.porter.sdk;
 import static eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_REMOVE;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertThrows;
@@ -152,7 +153,7 @@ public class PorterUserServiceFacadeTest {
     }
 
     @Test
-    public void killingTheServiceClearsTheLocalState() {
+    public void killingTheServiceLeavesTheDisconnectToTheDeathRecipient() {
         ThrowingService fake = attached();
         Porter.UserServiceArgs args = args("killed");
         RecordingConnection conn = new RecordingConnection();
@@ -160,13 +161,13 @@ public class PorterUserServiceFacadeTest {
 
         Porter.unbindUserService(args, conn, true);
 
-        assertNull(PorterServiceConnections.peek(args));
+        assertNotNull(PorterServiceConnections.peek(args));
         assertNotNull(fake.userServiceArgs);
         assertTrue(fake.userServiceArgs.getBoolean(USER_SERVICE_REMOVE));
     }
 
     @Test
-    public void aDeathIssuedBeforeARebindLeavesTheReboundCallerConnected() {
+    public void aDeathIssuedBeforeARebindDisconnectsOnlyTheCallerItWasBoundTo() {
         attached();
         Porter.UserServiceArgs args = args("death-then-rebind");
         RecordingConnection first = new RecordingConnection();
@@ -181,8 +182,9 @@ public class PorterUserServiceFacadeTest {
         Porter.bindUserService(args, second);
         ShadowLooper.shadowMainLooper().idle();
 
-        assertEquals(0, first.disconnects);
+        assertEquals(1, first.disconnects);
         assertEquals(0, second.disconnects);
-        assertSame(connection, PorterServiceConnections.peek(args));
+        assertNotNull(PorterServiceConnections.peek(args));
+        assertNotSame(connection, PorterServiceConnections.peek(args));
     }
 }
