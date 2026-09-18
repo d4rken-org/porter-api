@@ -113,16 +113,16 @@ class PorterServiceConnection implements UserServiceCallback {
             snapshot = new ArrayList<>(connections);
             connections.clear();
             PorterServiceConnections.remove(this);
-        }
 
-        // By the time the lock is released the death has happened, the set it applies to is
-        // captured and this instance is evicted, so a later bind gets one of its own. Only the
-        // delivery waits for the main thread.
-        MAIN_HANDLER.post(() -> {
-                    for (ServiceConnection conn : snapshot) {
-                        conn.onServiceDisconnected(componentName);
+            // Queued while the eviction is still private to this thread: a rebind has to take this
+            // same lock to register, so its "connected" cannot reach the queue ahead of this
+            // disconnect. Posting is not executing, the body runs later and outside the lock.
+            MAIN_HANDLER.post(() -> {
+                        for (ServiceConnection conn : snapshot) {
+                            conn.onServiceDisconnected(componentName);
+                        }
                     }
-                }
-        );
+            );
+        }
     }
 }
