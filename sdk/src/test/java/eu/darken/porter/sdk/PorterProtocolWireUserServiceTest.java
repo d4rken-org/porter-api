@@ -160,9 +160,9 @@ public class PorterProtocolWireUserServiceTest {
     public void twoThreadsBindingOneServiceRegisterOneBinder() throws Exception {
         RecordingService fake = attached();
         GatedCallback callback = new GatedCallback();
-        Bundle add = args("concurrent-binding").forAdd();
+        Porter.UserServiceArgs add = args("concurrent-binding");
 
-        Runnable bind = () -> Porter.requireWire().addUserService(callback, add);
+        Runnable bind = () -> Porter.requireWire().addUserService(callback, add, false);
         Thread first = new Thread(bind);
         Thread second = new Thread(bind);
         first.start();

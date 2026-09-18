@@ -35,8 +35,8 @@ public class UserServiceArgsTest {
     }
 
     @Test
-    public void forAddCarriesTheDefaults() {
-        Bundle bundle = args().forAdd();
+    public void theAddBundleCarriesTheDefaults() {
+        Bundle bundle = PorterUserServiceCodec.encodeUserService(args(), false);
 
         assertEquals(COMPONENT, bundle.getParcelable(USER_SERVICE_COMPONENT));
         assertEquals(PROCESS_NAME_SUFFIX, bundle.getString(USER_SERVICE_PROCESS_NAME_SUFFIX));
@@ -48,8 +48,9 @@ public class UserServiceArgsTest {
     }
 
     @Test
-    public void forAddCarriesWhatWasSet() {
-        Bundle bundle = args().tag("probe-tag").version(3).daemon(false).debuggable(true).forAdd();
+    public void theAddBundleCarriesWhatWasSet() {
+        Bundle bundle = PorterUserServiceCodec.encodeUserService(
+                args().tag("probe-tag").version(3).daemon(false).debuggable(true), false);
 
         assertEquals("probe-tag", bundle.getString(USER_SERVICE_TAG));
         assertEquals(3, bundle.getInt(USER_SERVICE_VERSION_CODE));
@@ -58,13 +59,14 @@ public class UserServiceArgsTest {
     }
 
     @Test
-    public void forRemoveCarriesTheRemoveFlag() {
-        Bundle remove = args().tag("probe-tag").forRemove(true);
+    public void theRemovalBundleCarriesTheRemoveFlag() {
+        Bundle remove = PorterUserServiceCodec.encodeUserServiceRemoval(args().tag("probe-tag"), true);
 
         assertEquals(COMPONENT, remove.getParcelable(USER_SERVICE_COMPONENT));
         assertEquals("probe-tag", remove.getString(USER_SERVICE_TAG));
         assertTrue(remove.getBoolean(USER_SERVICE_REMOVE));
 
-        assertFalse(args().forRemove(false).getBoolean(USER_SERVICE_REMOVE));
+        assertFalse(PorterUserServiceCodec.encodeUserServiceRemoval(args(), false)
+                .getBoolean(USER_SERVICE_REMOVE));
     }
 }

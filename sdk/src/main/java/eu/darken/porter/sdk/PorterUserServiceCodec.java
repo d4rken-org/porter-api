@@ -16,17 +16,15 @@ import androidx.annotation.NonNull;
 
 import java.util.Objects;
 
-/**
- * How {@link Porter.UserServiceArgs} is written for the Porter server. Its callers build the bundle
- * without a connection in hand, which is why this is not asked of a wire.
- */
+/** How {@link Porter.UserServiceArgs} is written in the Porter server's key space. */
 final class PorterUserServiceCodec {
 
     private PorterUserServiceCodec() {
     }
 
+    /** @param noCreate marks the service "do not start it", as {@code peekUserService} asks for */
     @NonNull
-    static Bundle encodeUserService(@NonNull Porter.UserServiceArgs args) {
+    static Bundle encodeUserService(@NonNull Porter.UserServiceArgs args, boolean noCreate) {
         Bundle bundle = new Bundle();
         bundle.putParcelable(USER_SERVICE_COMPONENT, args.componentName);
         bundle.putBoolean(USER_SERVICE_DEBUGGABLE, args.debuggable);
@@ -38,14 +36,10 @@ final class PorterUserServiceCodec {
         if (args.tag != null) {
             bundle.putString(USER_SERVICE_TAG, args.tag);
         }
+        if (noCreate) {
+            bundle.putBoolean(USER_SERVICE_NO_CREATE, true);
+        }
         return bundle;
-    }
-
-    /** Marks an encoded user service "do not start it", as {@code peekUserService} asks for. */
-    @NonNull
-    static Bundle withoutCreation(@NonNull Bundle encoded) {
-        encoded.putBoolean(USER_SERVICE_NO_CREATE, true);
-        return encoded;
     }
 
     @NonNull

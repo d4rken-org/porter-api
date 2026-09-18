@@ -6,7 +6,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
-import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
@@ -416,14 +415,6 @@ public final class Porter {
             this.use32BitAppProcess = use32BitAppProcess;
             return this;
         }
-
-        Bundle forAdd() {
-            return PorterUserServiceCodec.encodeUserService(this);
-        }
-
-        Bundle forRemove(boolean remove) {
-            return PorterUserServiceCodec.encodeUserServiceRemoval(this, remove);
-        }
     }
 
     /**
@@ -441,7 +432,7 @@ public final class Porter {
     public static void bindUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnection connection = PorterServiceConnections.get(args);
         connection.addConnection(conn);
-        requireWire().addUserService(connection, args.forAdd());
+        requireWire().addUserService(connection, args, false);
     }
 
     /**
@@ -452,8 +443,7 @@ public final class Porter {
     public static int peekUserService(@NonNull UserServiceArgs args, @NonNull ServiceConnection conn) {
         PorterServiceConnection connection = PorterServiceConnections.get(args);
         connection.addConnection(conn);
-        return requireWire().addUserService(
-                connection, PorterUserServiceCodec.withoutCreation(args.forAdd()));
+        return requireWire().addUserService(connection, args, true);
     }
 
     /**
@@ -463,7 +453,7 @@ public final class Porter {
     public static void unbindUserService(
             @NonNull UserServiceArgs args, @Nullable ServiceConnection conn, boolean remove) {
         if (remove) {
-            requireWire().removeUserService(null /* (unused) */, args.forRemove(true));
+            requireWire().removeUserService(null /* (unused) */, args, true);
             return;
         }
 
@@ -473,7 +463,7 @@ public final class Porter {
          * on the server first, then locally.
          */
         PorterServiceConnection connection = PorterServiceConnections.get(args);
-        requireWire().removeUserService(connection, args.forRemove(false));
+        requireWire().removeUserService(connection, args, false);
         connection.clearConnections();
         PorterServiceConnections.remove(connection);
     }

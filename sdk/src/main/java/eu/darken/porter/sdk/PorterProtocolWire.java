@@ -179,20 +179,24 @@ final class PorterProtocolWire implements PorterWire {
     }
 
     @Override
-    public int addUserService(@NonNull UserServiceCallback conn, @NonNull Bundle args) {
+    public int addUserService(@NonNull UserServiceCallback conn,
+                              @NonNull Porter.UserServiceArgs args, boolean noCreate) {
         IPorterServiceConnection adapter = adapterFor(conn);
+        Bundle options = PorterUserServiceCodec.encodeUserService(args, noCreate);
         try {
-            return service.addUserService(adapter, args);
+            return service.addUserService(adapter, options);
         } catch (RemoteException e) {
             throw rethrowAsRuntimeException(e);
         }
     }
 
     @Override
-    public int removeUserService(@Nullable UserServiceCallback conn, @NonNull Bundle args) {
+    public int removeUserService(@Nullable UserServiceCallback conn,
+                                 @NonNull Porter.UserServiceArgs args, boolean remove) {
         IPorterServiceConnection adapter = adapterFor(conn);
+        Bundle options = PorterUserServiceCodec.encodeUserServiceRemoval(args, remove);
         try {
-            return service.removeUserService(adapter, args);
+            return service.removeUserService(adapter, options);
         } catch (RemoteException e) {
             throw rethrowAsRuntimeException(e);
         }

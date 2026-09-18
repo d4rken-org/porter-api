@@ -1,6 +1,5 @@
 package eu.darken.porter.sdk;
 
-import android.os.Bundle;
 import android.os.IBinder;
 import android.os.Parcel;
 import android.os.RemoteException;
@@ -77,9 +76,23 @@ interface PorterWire {
 
     boolean shouldShowRequestPermissionRationale();
 
-    int addUserService(@NonNull UserServiceCallback conn, @NonNull Bundle args);
+    /**
+     * Binds one user service, encoding {@code args} in this wire's own server's key space.
+     *
+     * @param noCreate ask for the service only if it is already running
+     */
+    int addUserService(@NonNull UserServiceCallback conn, @NonNull Porter.UserServiceArgs args,
+                       boolean noCreate);
 
-    int removeUserService(@Nullable UserServiceCallback conn, @NonNull Bundle args);
+    /**
+     * Drops one user service binding, encoding {@code args} in this wire's own server's key space.
+     *
+     * <p>A wire whose server cannot honour the call may decline to send it and answer 0.
+     *
+     * @param remove kill the remote user service; it is not killed otherwise
+     */
+    int removeUserService(@Nullable UserServiceCallback conn, @NonNull Porter.UserServiceArgs args,
+                          boolean remove);
 
     void exit();
 
