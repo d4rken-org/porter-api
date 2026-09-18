@@ -35,15 +35,20 @@ interface PorterWire {
         final long capabilities;
         final boolean permissionGranted;
         final boolean shouldShowRequestPermissionRationale;
+        /** The Shizuku patch level, and null on a wire whose server has none. */
+        @Nullable
+        final Integer patchVersion;
 
         AttachReply(int serverUid, int protocolVersion, String seLinuxContext, long capabilities,
-                    boolean permissionGranted, boolean shouldShowRequestPermissionRationale) {
+                    boolean permissionGranted, boolean shouldShowRequestPermissionRationale,
+                    @Nullable Integer patchVersion) {
             this.serverUid = serverUid;
             this.protocolVersion = protocolVersion;
             this.seLinuxContext = seLinuxContext;
             this.capabilities = capabilities;
             this.permissionGranted = permissionGranted;
             this.shouldShowRequestPermissionRationale = shouldShowRequestPermissionRationale;
+            this.patchVersion = patchVersion;
         }
     }
 

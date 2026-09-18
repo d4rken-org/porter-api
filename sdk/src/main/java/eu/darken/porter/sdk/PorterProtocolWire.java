@@ -74,7 +74,8 @@ final class PorterProtocolWire implements PorterWire {
                 reply.getString(REPLY_SERVER_SECONTEXT),
                 reply.getLong(REPLY_CAPABILITIES, CAPABILITIES_NONE),
                 reply.getBoolean(REPLY_PERMISSION_GRANTED, false),
-                reply.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false));
+                reply.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false),
+                null);
     }
 
     @Override
