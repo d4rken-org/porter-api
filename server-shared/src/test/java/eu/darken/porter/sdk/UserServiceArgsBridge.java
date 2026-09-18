@@ -12,10 +12,10 @@ public final class UserServiceArgsBridge {
     }
 
     public static Bundle forAdd(Porter.UserServiceArgs args) {
-        return args.forAdd();
+        return PorterUserServiceCodec.encodeUserService(args, false);
     }
 
     public static Bundle forRemove(Porter.UserServiceArgs args, boolean remove) {
-        return args.forRemove(remove);
+        return PorterUserServiceCodec.encodeUserServiceRemoval(args, remove);
     }
 }

@@ -262,12 +262,14 @@ final class ShizukuProtocolWire implements PorterWire {
     }
 
     @Override
-    public int addUserService(@NonNull UserServiceCallback conn, @NonNull Bundle args) {
+    public int addUserService(@NonNull UserServiceCallback conn,
+                              @NonNull Porter.UserServiceArgs args, boolean noCreate) {
         throw new UnsupportedOperationException(NO_USER_SERVICES);
     }
 
     @Override
-    public int removeUserService(@Nullable UserServiceCallback conn, @NonNull Bundle args) {
+    public int removeUserService(@Nullable UserServiceCallback conn,
+                                 @NonNull Porter.UserServiceArgs args, boolean remove) {
         throw new UnsupportedOperationException(NO_USER_SERVICES);
     }
 
