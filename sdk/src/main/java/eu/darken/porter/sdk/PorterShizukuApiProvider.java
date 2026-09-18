@@ -9,10 +9,9 @@ import androidx.annotation.NonNull;
  * Receives the binder a Shizuku server sends, which travels in a different envelope at a different
  * authority than {@link PorterApiProvider}'s.
  *
- * <p><b>The Shizuku backend is not implemented yet.</b> Declaring this provider today makes the app
- * reachable at {@code ${applicationId}.shizuku} and makes a binder delivered there decode; the SDK
- * then discards it, because it has no wire that speaks to a Shizuku server. Nothing about
- * {@link Porter} changes until it does.
+ * <p><b>User services are not available on this backend yet.</b> A binder delivered here attaches
+ * and {@link Porter} answers for it, but {@link Porter#bindUserService} and
+ * {@link Porter#unbindUserService} throw {@link UnsupportedOperationException}.
  *
  * <p>The SDK declares nothing at that authority. An app that wants Shizuku delivery adds the whole
  * block itself, the permission and the meta-data included: the server refuses an app that requests
