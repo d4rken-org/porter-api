@@ -12,6 +12,7 @@ final class ShizukuProtocol {
      */
     static final String DESCRIPTOR = "moe.shizuku.server.IShizukuService";
     static final String APPLICATION_DESCRIPTOR = "moe.shizuku.server.IShizukuApplication";
+    static final String SERVICE_CONNECTION_DESCRIPTOR = "moe.shizuku.server.IShizukuServiceConnection";
 
     /** What attach declares this client to be. */
     static final int CLIENT_API_VERSION = 13;
@@ -27,6 +28,8 @@ final class ShizukuProtocol {
     static final int TRANSACTION_getSELinuxContext = 9; // 8
     static final int TRANSACTION_getSystemProperty = 10; // 9
     static final int TRANSACTION_setSystemProperty = 11; // 10
+    static final int TRANSACTION_addUserService = 12; // 11
+    static final int TRANSACTION_removeUserService = 13; // 12
     static final int TRANSACTION_requestPermission = 15; // 14
     static final int TRANSACTION_checkSelfPermission = 16; // 15
     static final int TRANSACTION_shouldShowRequestPermissionRationale = 17; // 16
@@ -40,6 +43,10 @@ final class ShizukuProtocol {
     // Codes on APPLICATION_DESCRIPTOR, which the server transacts on the client.
     static final int APPLICATION_TRANSACTION_bindApplication = 2; // 1
     static final int APPLICATION_TRANSACTION_dispatchRequestPermissionResult = 3; // 2
+
+    // Codes on SERVICE_CONNECTION_DESCRIPTOR, which the server transacts on the client.
+    static final int SERVICE_CONNECTION_TRANSACTION_connected = 1; // 0
+    static final int SERVICE_CONNECTION_TRANSACTION_died = 2; // 1
 
     // attach args
     static final String ATTACH_APPLICATION_PACKAGE_NAME = "shizuku:attach-package-name";
@@ -59,5 +66,15 @@ final class ShizukuProtocol {
     static final String REQUEST_PERMISSION_REPLY_IS_ONETIME = "shizuku:request-permission-reply-is-onetime";
 
     // user service
+    static final String USER_SERVICE_ARG_TAG = "shizuku:user-service-arg-tag";
+    static final String USER_SERVICE_ARG_COMPONENT = "shizuku:user-service-arg-component";
+    static final String USER_SERVICE_ARG_DEBUGGABLE = "shizuku:user-service-arg-debuggable";
+    static final String USER_SERVICE_ARG_VERSION_CODE = "shizuku:user-service-arg-version-code";
+    static final String USER_SERVICE_ARG_PROCESS_NAME = "shizuku:user-service-arg-process-name";
+    static final String USER_SERVICE_ARG_NO_CREATE = "shizuku:user-service-arg-no-create";
+    static final String USER_SERVICE_ARG_DAEMON = "shizuku:user-service-arg-daemon";
+    static final String USER_SERVICE_ARG_USE_32_BIT_APP_PROCESS = "shizuku:user-service-arg-use-32-bit-app-process";
+    /** Spelled without the "-arg-" of the other eight; {@code ShizukuProtocolConstantsTest} pins it. */
+    static final String USER_SERVICE_ARG_REMOVE = "shizuku:user-service-remove";
     static final String USER_SERVICE_ARG_TOKEN = "shizuku:user-service-arg-token";
 }

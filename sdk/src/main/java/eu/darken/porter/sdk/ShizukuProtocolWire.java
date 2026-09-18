@@ -13,6 +13,7 @@ import static eu.darken.porter.sdk.ShizukuProtocol.BIND_APPLICATION_SHOULD_SHOW_
 import static eu.darken.porter.sdk.ShizukuProtocol.DESCRIPTOR;
 import static eu.darken.porter.sdk.ShizukuProtocol.REQUEST_PERMISSION_REPLY_ALLOWED;
 import static eu.darken.porter.sdk.ShizukuProtocol.REQUEST_PERMISSION_REPLY_IS_ONETIME;
+import static eu.darken.porter.sdk.ShizukuProtocol.SERVICE_CONNECTION_DESCRIPTOR;
 import static eu.darken.porter.sdk.ShizukuProtocol.USER_SERVICE_ARG_TOKEN;
 
 import android.os.Binder;
@@ -35,9 +36,6 @@ final class ShizukuProtocolWire implements PorterWire {
     private static final String TAG = "Porter";
 
     private static final long ATTACH_TIMEOUT_MS = 5000;
-
-    private static final String NO_USER_SERVICES =
-            "user services are not implemented on the Shizuku backend yet";
 
     /** For a call that writes nothing after the interface token. */
     private static final Arguments NO_ARGUMENTS = data -> {
@@ -104,6 +102,43 @@ final class ShizukuProtocolWire implements PorterWire {
                     Bundle result = data.readTypedObject(Bundle.CREATOR);
                     callbacks.onRequestPermissionResult(requestCode,
                             result != null && result.getBoolean(REQUEST_PERMISSION_REPLY_ALLOWED, false));
+                    return true;
+                }
+                default:
+                    return super.onTransact(code, data, reply, flags);
+            }
+        }
+    }
+
+    /** The binder the server pushes one user service binding to, one per callback. */
+    private static final class ShizukuServiceConnection extends Binder implements IInterface {
+
+        private final UserServiceCallback callback;
+
+        ShizukuServiceConnection(@NonNull UserServiceCallback callback) {
+            this.callback = callback;
+            attachInterface(this, SERVICE_CONNECTION_DESCRIPTOR);
+        }
+
+        /** {@link Binder} carries {@link IBinder} rather than {@link IInterface}. */
+        @Override
+        public IBinder asBinder() {
+            return this;
+        }
+
+        @Override
+        protected boolean onTransact(int code, @NonNull Parcel data, @Nullable Parcel reply, int flags)
+                throws RemoteException {
+            // Both of these are oneway, so nothing is written back, not even an exception header.
+            switch (code) {
+                case ShizukuProtocol.SERVICE_CONNECTION_TRANSACTION_connected: {
+                    data.enforceInterface(SERVICE_CONNECTION_DESCRIPTOR);
+                    callback.connected(data.readStrongBinder());
+                    return true;
+                }
+                case ShizukuProtocol.SERVICE_CONNECTION_TRANSACTION_died: {
+                    data.enforceInterface(SERVICE_CONNECTION_DESCRIPTOR);
+                    callback.died();
                     return true;
                 }
                 default:
@@ -264,13 +299,62 @@ final class ShizukuProtocolWire implements PorterWire {
     @Override
     public int addUserService(@NonNull UserServiceCallback conn,
                               @NonNull Porter.UserServiceArgs args, boolean noCreate) {
-        throw new UnsupportedOperationException(NO_USER_SERVICES);
+        IBinder connection = connectionBinderFor(conn);
+        Bundle options = ShizukuUserServiceCodec.encodeUserService(args, noCreate);
+        return call(ShizukuProtocol.TRANSACTION_addUserService, data -> {
+            data.writeStrongBinder(connection);
+            data.writeTypedObject(options, 0);
+        }, Parcel::readInt);
     }
 
     @Override
     public int removeUserService(@Nullable UserServiceCallback conn,
                                  @NonNull Porter.UserServiceArgs args, boolean remove) {
-        throw new UnsupportedOperationException(NO_USER_SERVICES);
+        if (!remove && !dropsAConnectionOnRequest()) return 0;
+
+        IBinder connection = connectionBinderFor(conn);
+        Bundle options = ShizukuUserServiceCodec.encodeUserServiceRemoval(args, remove);
+        return call(ShizukuProtocol.TRANSACTION_removeUserService, data -> {
+            data.writeStrongBinder(connection);
+            data.writeTypedObject(options, 0);
+        }, Parcel::readInt);
+    }
+
+    /**
+     * Whether this server understands being asked to drop a connection without killing the service.
+     * A server below that answers the request by killing the service, so a caller that only wants
+     * to stop listening is served by sending nothing at all and clearing its own state.
+     */
+    private boolean dropsAConnectionOnRequest() {
+        Bundle state;
+        synchronized (lock) {
+            state = attachState;
+        }
+        if (state == null) return false;
+
+        int version = state.getInt(BIND_APPLICATION_SERVER_VERSION, 0);
+        int patch = state.getInt(BIND_APPLICATION_SERVER_PATCH_VERSION, 0);
+        return version >= 14 || (version == 13 && patch >= 4);
+    }
+
+    /**
+     * The binder this wire has registered for {@code callback}, created on first use, and null for
+     * the removal that names no callback at all.
+     *
+     * <p>Lookup, creation and store happen under one lock on the callback, and the lock is released
+     * before the call that carries the result: two threads binding one service register one binder.
+     */
+    @Nullable
+    private static IBinder connectionBinderFor(@Nullable UserServiceCallback callback) {
+        if (callback == null) return null;
+        synchronized (callback) {
+            IBinder registered = callback.registeredBinder(PorterBackend.SHIZUKU);
+            if (registered != null) return registered;
+
+            IBinder connection = new ShizukuServiceConnection(callback).asBinder();
+            callback.rememberRegisteredBinder(PorterBackend.SHIZUKU, connection);
+            return connection;
+        }
     }
 
     @Override
