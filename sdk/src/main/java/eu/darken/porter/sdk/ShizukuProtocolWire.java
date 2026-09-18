@@ -322,8 +322,12 @@ final class ShizukuProtocolWire implements PorterWire {
 
     /**
      * Whether this server understands being asked to drop a connection without killing the service.
-     * A server below that answers the request by killing the service, so a caller that only wants
-     * to stop listening is served by sending nothing at all and clearing its own state.
+     * Upstream sends the call only above this gate and clears its own state below it; what a server
+     * below the gate makes of such a request is not established here.
+     *
+     * <p>Nothing being sent below the gate means the server keeps the registration while the facade
+     * clears and evicts its own, so a later bind registers a second binder alongside the first.
+     * Upstream leaves it there the same way.
      */
     private boolean dropsAConnectionOnRequest() {
         Bundle state;
