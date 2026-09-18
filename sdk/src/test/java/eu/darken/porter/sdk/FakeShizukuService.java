@@ -54,6 +54,25 @@ class FakeShizukuService extends IShizukuService.Stub {
     boolean selfPermission;
     boolean rationale;
 
+    /** What one add or remove carried, read the way the server reads it. */
+    static final class UserServiceCall {
+
+        final IBinder connection;
+        final Bundle args;
+
+        UserServiceCall(IBinder connection, Bundle args) {
+            this.connection = connection;
+            this.args = args;
+        }
+    }
+
+    final List<UserServiceCall> userServiceAdds = Collections.synchronizedList(new ArrayList<>());
+    final List<UserServiceCall> userServiceRemoves = Collections.synchronizedList(new ArrayList<>());
+    int addUserServiceResult;
+    int removeUserServiceResult;
+    /** The connection of the newest add, which is what the user service pushes go to. */
+    private IShizukuServiceConnection userServiceConnection;
+
     int exitCalls;
     IBinder attachedUserServiceBinder;
     Bundle attachedUserServiceOptions;
@@ -182,12 +201,31 @@ class FakeShizukuService extends IShizukuService.Stub {
 
     @Override
     public int addUserService(IShizukuServiceConnection conn, Bundle args) {
-        return 0;
+        userServiceAdds.add(new UserServiceCall(conn == null ? null : conn.asBinder(), args));
+        userServiceConnection = conn;
+        return addUserServiceResult;
     }
 
     @Override
     public int removeUserService(IShizukuServiceConnection conn, Bundle args) {
-        return 0;
+        userServiceRemoves.add(new UserServiceCall(conn == null ? null : conn.asBinder(), args));
+        return removeUserServiceResult;
+    }
+
+    void pushUserServiceConnected(IBinder service) {
+        try {
+            userServiceConnection.connected(service);
+        } catch (RemoteException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    void pushUserServiceDied() {
+        try {
+            userServiceConnection.died();
+        } catch (RemoteException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Override
