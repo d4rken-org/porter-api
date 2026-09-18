@@ -47,6 +47,8 @@ public class PorterShizukuApiProviderTest {
         info.exported = true;
         info.multiprocess = false;
         provider.attachInfo(context, info);
+        // A server delivery is taken only on the selected backend, and nothing is installed here.
+        PorterSession.selectBackendForTest(PorterSession.Selection.SHIZUKU);
     }
 
     @After

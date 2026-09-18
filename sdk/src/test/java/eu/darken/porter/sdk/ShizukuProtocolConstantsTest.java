@@ -7,6 +7,7 @@ import org.junit.Test;
 import moe.shizuku.server.IShizukuServiceConnection;
 
 import rikka.shizuku.ShizukuApiConstants;
+import rikka.shizuku.ShizukuProvider;
 
 /**
  * The Shizuku strings are copied by hand, because the modules that declare them are not published.
@@ -35,6 +36,12 @@ public class ShizukuProtocolConstantsTest {
                 ShizukuProtocol.USER_SERVICE_ARG_REMOVE);
         assertEquals(ShizukuApiConstants.USER_SERVICE_ARG_TOKEN,
                 ShizukuProtocol.USER_SERVICE_ARG_TOKEN);
+    }
+
+    @Test
+    public void theManagerIdentityIsTheOneTheProviderDeclares() {
+        assertEquals(ShizukuProvider.MANAGER_APPLICATION_ID, ShizukuProtocol.MANAGER_APPLICATION_ID);
+        assertEquals(ShizukuProvider.PERMISSION, ShizukuProtocol.PERMISSION);
     }
 
     @Test

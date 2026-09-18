@@ -1,5 +1,6 @@
 package eu.darken.porter.sdk;
 
+import androidx.annotation.Nullable;
 import androidx.annotation.VisibleForTesting;
 
 /**
@@ -20,8 +21,22 @@ final class ShizukuCompat {
         static final boolean PRESENT = probe(CLASS_NAME);
     }
 
+    /** What a test says the answer is, or null to read the classpath. */
+    @Nullable
+    private static volatile Boolean presentForTest;
+
     static boolean isPresent() {
-        return Holder.PRESENT;
+        Boolean pinned = presentForTest;
+        return pinned != null ? pinned : Holder.PRESENT;
+    }
+
+    /**
+     * Pins the answer, which {@link Holder} memoizes on first use and no test can steer twice.
+     * Cleared by {@link Porter#resetForTest()}.
+     */
+    @VisibleForTesting
+    static void setPresentForTest(@Nullable Boolean present) {
+        presentForTest = present;
     }
 
     /** Takes the name so a test can reach the absent branch from a classpath that has the class. */

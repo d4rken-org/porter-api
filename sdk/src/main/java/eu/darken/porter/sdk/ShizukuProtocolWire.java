@@ -148,15 +148,25 @@ final class ShizukuProtocolWire implements PorterWire {
     }
 
     private void onBindApplication(@Nullable Bundle state) {
+        boolean resent;
         synchronized (lock) {
-            if (attachState != null) {
-                // A server may push this again to a client that has already attached, and a resend
-                // must not corrupt a handshake that completed against the first one.
-                Log.d(TAG, "bindApplication after the handshake, dropped");
-                return;
-            }
-            attachState = state == null ? new Bundle() : state;
+            resent = attachState != null;
+            if (!resent) attachState = state == null ? new Bundle() : state;
         }
+
+        if (resent) {
+            // A server pushes this again to a client that has already attached when the permission
+            // it holds changes, and this wire carries no other signal for that. The handshake state
+            // is kept, because the handshake completed against it, and the permission state taken.
+            Log.d(TAG, "bindApplication after the handshake, permission state taken");
+            // Called outside the lock, as the first push counts the latch down outside it.
+            callbacks.onPermissionStateChanged(
+                    state != null && state.getBoolean(BIND_APPLICATION_PERMISSION_GRANTED, false),
+                    state != null && state.getBoolean(
+                            BIND_APPLICATION_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false));
+            return;
+        }
+
         attached.countDown();
     }
 

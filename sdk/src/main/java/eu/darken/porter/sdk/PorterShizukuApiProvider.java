@@ -9,9 +9,10 @@ import androidx.annotation.NonNull;
  * Receives the binder a Shizuku server sends, which travels in a different envelope at a different
  * authority than {@link PorterApiProvider}'s.
  *
- * <p>{@link Porter#getAvailability(Context)} does not describe this backend: it answers about the
- * Porter manager's permission, so a device carrying only a Shizuku server reads as
- * {@link Porter.Availability#NOT_INSTALLED} until a binder arrives here.
+ * <p>{@link Porter#getAvailability(Context)} describes this backend on a device that selects it: no
+ * package declares Porter's permission, one declares Shizuku's, and the {@code shizuku-compat}
+ * artifact below is on the classpath. Without that artifact the answer stays
+ * {@link Porter.Availability#NOT_INSTALLED}.
  *
  * <p>The SDK declares nothing at that authority. An app that wants Shizuku delivery adds the whole
  * block itself, the permission and the meta-data included: the server refuses an app that requests

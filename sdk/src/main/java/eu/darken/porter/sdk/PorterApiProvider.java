@@ -82,6 +82,15 @@ public class PorterApiProvider extends ContentProvider {
             context.registerReceiver(receiver, new IntentFilter(ACTION_BINDER_RECEIVED));
         }
 
+        // A delivery this process refused was refused because a connection was live. Once that
+        // connection dies nothing is live, the refusal no longer applies, and the binder the
+        // provider process holds can be adopted. It runs as a post-death hook rather than as a dead
+        // listener so that every listener registered for that death is told before the replacement
+        // announces itself: an app that registers its own listeners after this call would otherwise
+        // sit behind this one.
+        Context appContext = context.getApplicationContext();
+        Porter.addPostBinderDeadHook(() -> fetchBinderFromProvider(appContext));
+
         fetchBinderFromProvider(context);
     }
 
@@ -111,7 +120,10 @@ public class PorterApiProvider extends ContentProvider {
         if (binder == null) return false;
 
         Log.i(TAG, "Binder received from other process");
-        Porter.onBinderReceived(binder, context.getPackageName(), delivery.backend());
+        // Ungated on purpose: this is the provider process's own connection, on the backend that
+        // process already selected. Rejecting it here would refuse a binder the app is using.
+        PorterSession.adoptBackend(delivery.backend());
+        PorterSession.onBinderReceived(binder, context.getPackageName(), delivery.backend());
         return true;
     }
 
@@ -176,7 +188,8 @@ public class PorterApiProvider extends ContentProvider {
 
         Log.d(TAG, "binder received");
 
-        Porter.onBinderReceived(binder, getContext().getPackageName(), delivery().backend());
+        Porter.onBinderReceived(
+                getContext(), binder, getContext().getPackageName(), delivery().backend());
 
         if (enableMultiProcess) {
             Log.d(TAG, "broadcast binder");

@@ -34,6 +34,8 @@ public class PorterAvailabilityTest {
         when(context.getPackageManager()).thenReturn(packages);
         when(packages.getPermissionInfo(PorterProtocol.PERMISSION, 0))
                 .thenThrow(new PackageManager.NameNotFoundException());
+        when(packages.getPermissionInfo(ShizukuProtocol.PERMISSION, 0))
+                .thenThrow(new PackageManager.NameNotFoundException());
     }
 
     @After
@@ -42,9 +44,17 @@ public class PorterAvailabilityTest {
     }
 
     private void permissionOwnedBy(String packageName) throws Exception {
-        PermissionInfo permission = new PermissionInfo();
-        permission.packageName = packageName;
-        doReturn(permission).when(packages).getPermissionInfo(PorterProtocol.PERMISSION, 0);
+        declared(PorterProtocol.PERMISSION, packageName);
+    }
+
+    private void shizukuPermissionOwnedBy(String packageName) throws Exception {
+        declared(ShizukuProtocol.PERMISSION, packageName);
+    }
+
+    private void declared(String permission, String packageName) throws Exception {
+        PermissionInfo info = new PermissionInfo();
+        info.packageName = packageName;
+        doReturn(info).when(packages).getPermissionInfo(permission, 0);
     }
 
     @Test
@@ -64,6 +74,38 @@ public class PorterAvailabilityTest {
         permissionOwnedBy(PorterProtocol.MANAGER_APPLICATION_ID);
 
         assertEquals(Porter.Availability.INSTALLED_NOT_CONNECTED, Porter.getAvailability(context));
+    }
+
+    @Test
+    public void theShizukuManagerWithoutABinderIsInstalledButNotConnected() throws Exception {
+        shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID);
+
+        assertEquals(Porter.Availability.INSTALLED_NOT_CONNECTED, Porter.getAvailability(context));
+    }
+
+    @Test
+    public void aForeignOwnerOfTheShizukuPermissionIsReportedAsUnrecognized() throws Exception {
+        shizukuPermissionOwnedBy("moe.shizuku.impostor");
+
+        assertEquals(Porter.Availability.INSTALLED_UNRECOGNIZED, Porter.getAvailability(context));
+    }
+
+    /** Porter is selected where both are installed, so the answer is about Porter's manager. */
+    @Test
+    public void bothManagersInstalledAnswerAboutPorter() throws Exception {
+        permissionOwnedBy("eu.darken.porter.impostor");
+        shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID);
+
+        assertEquals(Porter.Availability.INSTALLED_UNRECOGNIZED, Porter.getAvailability(context));
+    }
+
+    /** Without the compatibility artifact no Shizuku binder can arrive, so none is waited for. */
+    @Test
+    public void aShizukuManagerWithoutTheCompatibilityArtifactIsNotInstalled() throws Exception {
+        shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID);
+        ShizukuCompat.setPresentForTest(false);
+
+        assertEquals(Porter.Availability.NOT_INSTALLED, Porter.getAvailability(context));
     }
 
     @Test
