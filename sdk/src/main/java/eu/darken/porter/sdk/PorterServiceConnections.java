@@ -20,6 +20,9 @@ class PorterServiceConnections {
 
     private static final Map<String, PorterServiceConnection> CACHE = new HashMap<>();
 
+    /** The instances evicted by a death whose delivery has neither run nor been called off. */
+    private static final Map<String, List<PorterServiceConnection>> PENDING = new HashMap<>();
+
     @NonNull
     static PorterServiceConnection get(Porter.UserServiceArgs args) {
         synchronized (LOCK) {
@@ -78,21 +81,72 @@ class PorterServiceConnections {
 
     static void remove(PorterServiceConnection connection) {
         synchronized (LOCK) {
-            List<String> keys = new ArrayList<>();
-            for (Map.Entry<String, PorterServiceConnection> entry : CACHE.entrySet()) {
-                if (entry.getValue() == connection) {
-                    keys.add(entry.getKey());
+            evict(connection);
+        }
+    }
+
+    /**
+     * Evicts {@code connection} as {@link #remove} does, and names it under every key it held so
+     * that an unbind arriving before its death delivery runs can still call that delivery off.
+     */
+    static void retire(PorterServiceConnection connection) {
+        synchronized (LOCK) {
+            for (String key : evict(connection)) {
+                List<PorterServiceConnection> pending = PENDING.get(key);
+                if (pending == null) {
+                    pending = new ArrayList<>();
+                    PENDING.put(key, pending);
                 }
-            }
-            for (String key : keys) {
-                CACHE.remove(key);
+                pending.add(connection);
             }
         }
+    }
+
+    /** Drops {@code connection} from the pending map, its delivery having run or been called off. */
+    static void deliveryDone(PorterServiceConnection connection) {
+        synchronized (LOCK) {
+            List<String> emptied = new ArrayList<>();
+            for (Map.Entry<String, List<PorterServiceConnection>> entry : PENDING.entrySet()) {
+                entry.getValue().remove(connection);
+                if (entry.getValue().isEmpty()) {
+                    emptied.add(entry.getKey());
+                }
+            }
+            for (String key : emptied) {
+                PENDING.remove(key);
+            }
+        }
+    }
+
+    /** Calls off the death deliveries queued under {@code args} but not yet run. */
+    static void cancelPending(Porter.UserServiceArgs args) {
+        synchronized (LOCK) {
+            List<PorterServiceConnection> pending = PENDING.remove(key(args));
+            if (pending == null) return;
+            for (PorterServiceConnection connection : pending) {
+                connection.cancelPendingDelivery();
+            }
+        }
+    }
+
+    @NonNull
+    private static List<String> evict(PorterServiceConnection connection) {
+        List<String> keys = new ArrayList<>();
+        for (Map.Entry<String, PorterServiceConnection> entry : CACHE.entrySet()) {
+            if (entry.getValue() == connection) {
+                keys.add(entry.getKey());
+            }
+        }
+        for (String key : keys) {
+            CACHE.remove(key);
+        }
+        return keys;
     }
 
     static void clearForTest() {
         synchronized (LOCK) {
             CACHE.clear();
+            PENDING.clear();
         }
     }
 }
