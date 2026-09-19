@@ -331,9 +331,10 @@ public final class Porter {
      * permission and is not the manager this SDK knows. Do not name or launch it without your own
      * verification.
      *
-     * <p>From API 30 this answers only about packages the app can see, and the SDK's manifest names
-     * {@code eu.darken.porter} and {@code moe.shizuku.privileged.api}. A manager published under some
-     * other package name may therefore read {@link Availability#NOT_INSTALLED} here.
+     * <p>The permission lookup behind this is not filtered by package visibility, so a manager is
+     * found whatever package it is published under. One that owns the permission without being the
+     * manager this SDK knows reads {@link Availability#INSTALLED_UNRECOGNIZED}, not
+     * {@link Availability#NOT_INSTALLED}.
      */
     @NonNull
     public static Availability getAvailability(@NonNull Context context) {
