@@ -252,6 +252,10 @@ final class PorterSession {
                 retained = current;
             }
         }
+        // Whatever this session had published, it is its own binder that died, and a wire still
+        // waiting on that binder has nothing left to wait for. Outside the lock, as the wire counts
+        // its own attach latch down outside its own.
+        wire.onPeerDied();
         if (wasCurrent) Porter.scheduleBinderDeadListeners();
         // Whoever asked about the connection while this one was attaching was told there was none.
         if (retained != null) Porter.scheduleStickyCatchUp(retained);

@@ -58,6 +58,12 @@ final class ShizukuProtocolWire implements PorterWire {
     private Bundle attachState;
 
     /**
+     * Set once, from the death dispatch, and read by the waiter on {@link #attached}. Outside
+     * {@link #lock} so that counting the latch down here cannot happen while that lock is held.
+     */
+    private volatile boolean peerDied;
+
+    /**
      * Held for the life of the connection: the server keeps only a proxy, so a stub that goes
      * unreachable here stops the pushes arriving.
      */
@@ -185,6 +191,12 @@ final class ShizukuProtocolWire implements PorterWire {
         return awaitAttachReply();
     }
 
+    @Override
+    public void onPeerDied() {
+        peerDied = true;
+        attached.countDown();
+    }
+
     /**
      * Shizuku's {@code attachApplication} answers nothing: the state arrives afterwards on the
      * callback binder, from one of this process's binder threads, so the call that started the
@@ -201,6 +213,11 @@ final class ShizukuProtocolWire implements PorterWire {
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("interrupted while waiting for the server to attach", e);
+        }
+        // Ahead of the timeout: a death that lands as the wait expires ended it, whatever the clock
+        // says.
+        if (peerDied) {
+            throw new IllegalStateException("the server died before it answered attach");
         }
         if (!answered) {
             throw new IllegalStateException(

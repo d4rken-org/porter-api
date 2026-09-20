@@ -55,6 +55,13 @@ interface PorterWire {
     @Nullable
     AttachReply attach(String packageName) throws RemoteException;
 
+    /**
+     * Told from the death dispatch that the connection this wire speaks over is gone. A wire whose
+     * calls all fail by themselves on a dead peer needs nothing here.
+     */
+    default void onPeerDied() {
+    }
+
     void transactRemote(@NonNull Parcel data, @Nullable Parcel reply, int flags);
 
     /** Forwards one transaction on {@code target}, in whatever envelope this wire's server expects. */
