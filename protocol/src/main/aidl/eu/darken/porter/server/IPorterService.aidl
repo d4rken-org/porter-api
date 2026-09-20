@@ -18,6 +18,8 @@ interface IPorterService {
 
     void setSystemProperty(String name, String value) = 6;
 
+    // Protocol internal, not a cross-backend promise: no method on Porter reaches this, and the
+    // Shizuku wire has no equivalent the SDK exposes. Callers transact on the binder themselves.
     IPorterRemoteProcess newProcess(in String[] cmd, in String[] env, String dir) = 7;
 
     int addUserService(in IPorterServiceConnection conn, in Bundle args) = 8;
