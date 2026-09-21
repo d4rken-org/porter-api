@@ -6,12 +6,15 @@ import android.content.pm.PackageInfo
 import android.os.Handler
 import android.os.IBinder
 import eu.darken.porter.core.CallerIdentity
+import eu.darken.porter.core.UserServiceBindResult
 import eu.darken.porter.core.UserServiceConnection
 import eu.darken.porter.core.UserServiceOptions
+import eu.darken.porter.core.UserServiceRemoveResult
 import java.util.concurrent.CopyOnWriteArrayList
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
@@ -28,7 +31,6 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowBinder
 import rikka.hidden.compat.PackageManagerApis
-import rikka.shizuku.ShizukuApiConstants
 import rikka.shizuku.server.util.HandlerUtil
 
 /** The neutral bind, remove and attach entry points of [UserServiceManager]. */
@@ -119,19 +121,13 @@ class UserServiceManagerNeutralTest {
     @Test
     fun bindAuthorisesAgainstTheHandedIdentity() {
         assertThrows(SecurityException::class.java) {
-            manager.addUserService(
-                CallerIdentity(UID + 1, PID), RecordingConnection(), bind(),
-                ShizukuApiConstants.SERVER_VERSION,
-            )
+            manager.addUserService(CallerIdentity(UID + 1, PID), RecordingConnection(), bind())
         }
         assertEquals(0, manager.created.size)
 
-        assertEquals(
-            0,
-            manager.addUserService(
-                CallerIdentity(UID, PID), RecordingConnection(), bind(),
-                ShizukuApiConstants.SERVER_VERSION,
-            ),
+        assertSame(
+            UserServiceBindResult.Bound,
+            manager.addUserService(CallerIdentity(UID, PID), RecordingConnection(), bind()),
         )
         assertEquals(1, manager.created.size)
     }
@@ -139,7 +135,7 @@ class UserServiceManagerNeutralTest {
     @Test
     fun attachByTokenStringBroadcastsToANeutralConnection() {
         val connection = RecordingConnection()
-        manager.addUserService(CallerIdentity(UID, PID), connection, bind(), ShizukuApiConstants.SERVER_VERSION)
+        manager.addUserService(CallerIdentity(UID, PID), connection, bind())
         val record = manager.created[0]
 
         val service = liveBinder()
@@ -152,11 +148,11 @@ class UserServiceManagerNeutralTest {
     fun removeWithoutTheRemoveFlagUnregistersTheNeutralConnection() {
         val kept = RecordingConnection()
         val dropped = RecordingConnection()
-        manager.addUserService(CallerIdentity(UID, PID), kept, bind(), ShizukuApiConstants.SERVER_VERSION)
+        manager.addUserService(CallerIdentity(UID, PID), kept, bind())
         val record = manager.created[0]
-        manager.addUserService(CallerIdentity(UID, PID), dropped, bind(), ShizukuApiConstants.SERVER_VERSION)
+        manager.addUserService(CallerIdentity(UID, PID), dropped, bind())
 
-        assertEquals(0, manager.removeUserService(CallerIdentity(UID, PID), dropped, unbindKeepingTheRecord()))
+        assertSame(UserServiceRemoveResult.Removed, manager.removeUserService(CallerIdentity(UID, PID), dropped, unbindKeepingTheRecord()))
 
         assertFalse(record.isRemoved)
 

@@ -6,7 +6,7 @@ import android.content.pm.PackageInfo
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
-import eu.darken.porter.core.ManagerOperations
+import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PACKAGE_NAME
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.PERMISSION_RESULT_ALLOWED
@@ -18,6 +18,7 @@ import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_REMOVE
 import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TAG
 import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_VERSION_CODE
 import eu.darken.porter.server.IPorterApplication
+import eu.darken.porter.server.IPorterService
 import eu.darken.porter.server.IPorterServiceConnection
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -25,7 +26,6 @@ import java.util.concurrent.TimeUnit
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -108,7 +108,6 @@ class PorterEndpointOperationsTest {
         userServices = RecordingUserServiceManager()
         endpoint = PorterEndpoint(
             ServerTestSupport.newCore(clients, userServices, config, ServerTestSupport.TestPolicy()) { listOf(PACKAGE) },
-            mock(ManagerOperations::class.java),
         )
 
         val installed = PackageInfo()
@@ -135,7 +134,7 @@ class PorterEndpointOperationsTest {
         val application = porterApplication(mock(IBinder::class.java))
         val args = Bundle()
         args.putString(ATTACH_PACKAGE_NAME, PACKAGE)
-        args.putInt(ATTACH_PROTOCOL_VERSION, 1)
+        args.putInt(ATTACH_PROTOCOL_VERSION, PorterProtocol.VERSION)
         endpoint.attach(application, args)
         return application
     }
@@ -177,7 +176,7 @@ class PorterEndpointOperationsTest {
         `when`(config.find(CLIENT_UID)).thenReturn(ServerTestSupport.entry(true, false))
         attach()
 
-        assertEquals(0, endpoint.addUserService(connection(), bindArgs(false)))
+        assertEquals(PorterProtocol.USER_SERVICE_RESULT_BOUND, endpoint.addUserService(connection(), bindArgs(false)))
 
         assertEquals(1, userServices.created.size)
         val record = userServices.created[0]
@@ -192,7 +191,8 @@ class PorterEndpointOperationsTest {
         }
 
         assertTrue(userServices.started.await(5, TimeUnit.SECONDS))
-        assertEquals("$PACKAGE:$TAG", userServices.key)
+        // Led by the caller's Android user, so a profile's copy of the app gets its own process.
+        assertEquals("10:$PACKAGE:$TAG", userServices.key)
         assertEquals(CLASS, userServices.className)
         assertEquals(PROCESS_NAME_SUFFIX, userServices.processNameSuffix)
     }
@@ -202,8 +202,50 @@ class PorterEndpointOperationsTest {
         `when`(config.find(CLIENT_UID)).thenReturn(ServerTestSupport.entry(true, false))
         attach()
 
-        assertEquals(-1, endpoint.addUserService(connection(), bindArgs(true)))
+        assertEquals(PorterProtocol.USER_SERVICE_RESULT_NOT_RUNNING, endpoint.addUserService(connection(), bindArgs(true)))
         assertTrue(userServices.created.isEmpty())
+    }
+
+    @Test
+    fun removingAServiceNobodyStartedSaysSo() {
+        `when`(config.find(CLIENT_UID)).thenReturn(ServerTestSupport.entry(true, false))
+        attach()
+
+        assertEquals(PorterProtocol.USER_SERVICE_RESULT_NO_SUCH_SERVICE, endpoint.removeUserService(connection(), removeArgs(true)))
+    }
+
+    /** Unregistering names what to unregister; without a connection only a removal makes sense. */
+    @Test
+    fun unregisteringWithoutAConnectionIsRefused() {
+        `when`(config.find(CLIENT_UID)).thenReturn(ServerTestSupport.entry(true, false))
+        attach()
+        endpoint.addUserService(connection(), bindArgs(false))
+
+        assertThrows(IllegalArgumentException::class.java) { endpoint.removeUserService(null, removeArgs(false)) }
+
+        assertFalse(userServices.created[0].isRemoved)
+        assertEquals(0, endpoint.removeUserService(null, removeArgs(true)))
+        assertTrue(userServices.created[0].isRemoved)
+    }
+
+    /**
+     * A refused caller is told it has no permission, not what its Bundle failed to decode to: a
+     * null or component-less Bundle would raise something else if the gate ran after the decoder.
+     */
+    @Test
+    fun theUserServiceCallsRefuseAnUnauthorizedCallerBeforeReadingItsBundle() {
+        assertThrows(SecurityException::class.java) { endpoint.addUserService(connection(), null) }
+        assertThrows(SecurityException::class.java) { endpoint.addUserService(connection(), Bundle()) }
+        assertThrows(SecurityException::class.java) { endpoint.removeUserService(connection(), Bundle()) }
+    }
+
+    /**
+     * Through the generated interface, whose parameter is a platform type: the wire can carry a
+     * null Bundle whatever the Kotlin signature says, and the gate has to run before it is read.
+     */
+    @Test
+    fun removeUserServiceRefusesAnUnauthorizedCallerBeforeReadingANullBundle() {
+        assertThrows(SecurityException::class.java) { (endpoint as IPorterService).removeUserService(connection(), null) }
     }
 
     @Test
@@ -226,27 +268,12 @@ class PorterEndpointOperationsTest {
     }
 
     @Test
-    @Throws(Exception::class)
-    fun newProcessRunsForAnAllowedClient() {
-        `when`(config.find(CLIENT_UID)).thenReturn(ServerTestSupport.entry(true, false))
-        attach()
-
-        val process = endpoint.newProcess(arrayOf("sh", "-c", "exit 3"), null, null)
-
-        assertNotNull(process)
-        assertEquals(3, process.waitFor())
-    }
-
-    @Test
     fun everyGatedOperationRefusesACallerWithoutPermission() {
         assertThrows(SecurityException::class.java) { endpoint.uid }
         assertThrows(SecurityException::class.java) { endpoint.checkPermission("android.permission.DUMP") }
         assertThrows(SecurityException::class.java) { endpoint.seLinuxContext }
         assertThrows(SecurityException::class.java) { endpoint.getSystemProperty("ro.build.id", "") }
         assertThrows(SecurityException::class.java) { endpoint.setSystemProperty("ro.build.id", "") }
-        assertThrows(SecurityException::class.java) {
-            endpoint.newProcess(arrayOf("sh", "-c", "exit 0"), null, null)
-        }
         assertThrows(SecurityException::class.java) { endpoint.addUserService(connection(), bindArgs(false)) }
         assertThrows(SecurityException::class.java) { endpoint.removeUserService(connection(), removeArgs(true)) }
     }

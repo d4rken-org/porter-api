@@ -39,6 +39,7 @@ dependencies {
     api(project(":shared"))
     api(project(":porsh"))
     api(project(":protocol"))
+    api(project(":manager-protocol"))
 
     implementation(libs.refine.runtime)
     implementation(libs.hidden.compat)

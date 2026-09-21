@@ -2,7 +2,6 @@ package eu.darken.porter.endpoint
 
 import android.content.ComponentName
 import android.os.Handler
-import eu.darken.porter.core.ManagerOperations
 import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.sdk.PermissionState
 import eu.darken.porter.sdk.Porter
@@ -52,7 +51,6 @@ class PorterWireRoundTripTest {
         clients = ClientManager(config)
         endpoint = PorterEndpoint(
             ServerTestSupport.newCore(clients, TestUserServiceManager(), config, TestPolicy()) { listOf(PACKAGE) },
-            mock(ManagerOperations::class.java),
         )
 
         ShadowBinder.setCallingUid(CLIENT_UID)

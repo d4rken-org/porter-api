@@ -6,18 +6,19 @@ import android.os.IBinder
 import android.os.RemoteException
 import eu.darken.porter.core.CallerIdentity
 import eu.darken.porter.core.ClientCallback
-import eu.darken.porter.core.ManagerOperations
 import eu.darken.porter.core.ServerPolicy
 import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PACKAGE_NAME
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE
 import eu.darken.porter.protocol.PorterProtocol.REPLY_CAPABILITIES
+import eu.darken.porter.protocol.PorterProtocol.REPLY_MIN_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.REPLY_PERMISSION_GRANTED
 import eu.darken.porter.protocol.PorterProtocol.REPLY_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_SECONTEXT
 import eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_UID
 import eu.darken.porter.protocol.PorterProtocol.REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE
+import eu.darken.porter.protocol.PorterProtocol.REPLY_UNSUPPORTED
 import eu.darken.porter.server.IPorterApplication
 import java.util.concurrent.atomic.AtomicBoolean
 import org.junit.After
@@ -81,7 +82,6 @@ class PorterEndpointAttachTest {
         val owned = packages.toList()
         return PorterEndpoint(
             ServerTestSupport.newCore(clientManager, ServerTestSupport.TestUserServiceManager(), config, serverPolicy) { owned },
-            mock(ManagerOperations::class.java),
         )
     }
 
@@ -96,6 +96,8 @@ class PorterEndpointAttachTest {
         assertEquals(PACKAGE, record.packageName)
 
         assertTrue(reply.containsKey(REPLY_PROTOCOL_VERSION))
+        assertTrue(reply.containsKey(REPLY_MIN_PROTOCOL_VERSION))
+        assertFalse(reply.containsKey(REPLY_UNSUPPORTED))
         assertTrue(reply.containsKey(REPLY_SERVER_UID))
         assertTrue(reply.containsKey(REPLY_SERVER_SECONTEXT))
         assertTrue(reply.containsKey(REPLY_PERMISSION_GRANTED))
@@ -103,6 +105,8 @@ class PorterEndpointAttachTest {
         assertTrue(reply.containsKey(REPLY_CAPABILITIES))
 
         assertEquals(PorterProtocol.VERSION, reply.getInt(REPLY_PROTOCOL_VERSION))
+        assertEquals(PorterProtocol.MIN_VERSION, reply.getInt(REPLY_MIN_PROTOCOL_VERSION))
+        assertEquals(PorterProtocol.VERSION, clients.findClient(CLIENT_UID, CLIENT_PID)!!.apiVersion)
         assertEquals(OsUtils.uid, reply.getInt(REPLY_SERVER_UID))
         assertEquals(OsUtils.seLinuxContext, reply.getString(REPLY_SERVER_SECONTEXT))
         assertFalse(reply.getBoolean(REPLY_PERMISSION_GRANTED))
@@ -174,6 +178,67 @@ class PorterEndpointAttachTest {
         val reply = endpoint.attach(porterApplication(mock(IBinder::class.java)), attachArgs(PACKAGE))
 
         assertTrue(reply.getBoolean(REPLY_PERMISSION_GRANTED))
+        assertFalse(reply.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE))
+    }
+
+    @Test
+    fun theReplyReportsADenialTheUserAskedNotToBeAskedAbout() {
+        `when`(config.find(CLIENT_UID)).thenReturn(ServerTestSupport.entry(false, true))
+
+        val reply = endpoint.attach(porterApplication(mock(IBinder::class.java)), attachArgs(PACKAGE))
+
+        assertFalse(reply.getBoolean(REPLY_PERMISSION_GRANTED))
+        assertTrue(reply.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE))
+    }
+
+    /** An old client is turned away before anything is created or any hook hears of it. */
+    @Test
+    fun aClientBelowTheFloorIsRefusedWithoutARecord() {
+        `when`(config.find(CLIENT_UID)).thenReturn(ServerTestSupport.entry(true, false))
+
+        val reply = endpoint.attach(porterApplication(mock(IBinder::class.java)), attachArgs(PACKAGE, PorterProtocol.MIN_VERSION - 1))
+
+        assertTrue(reply.getBoolean(REPLY_UNSUPPORTED))
+        assertEquals(PorterProtocol.VERSION, reply.getInt(REPLY_PROTOCOL_VERSION))
+        assertEquals(PorterProtocol.MIN_VERSION, reply.getInt(REPLY_MIN_PROTOCOL_VERSION))
+        assertEquals("nothing but the versions", 3, reply.size())
+
+        assertNull(clients.findClient(CLIENT_UID, CLIENT_PID))
+        assertTrue(policy.attachingCallers.isEmpty())
+        assertTrue(policy.attachedRecords.isEmpty())
+        assertTrue(policy.boundRecords.isEmpty())
+    }
+
+    @Test
+    fun aClientWithoutAVersionIsRefused() {
+        val args = Bundle().apply { putString(ATTACH_PACKAGE_NAME, PACKAGE) }
+
+        val reply = endpoint.attach(porterApplication(mock(IBinder::class.java)), args)
+
+        assertTrue(reply.getBoolean(REPLY_UNSUPPORTED))
+        assertNull(clients.findClient(CLIENT_UID, CLIENT_PID))
+    }
+
+    /** Newer is never a reason on its own: the client's floor is its own business. */
+    @Test
+    fun aClientAboveTheServerVersionAttaches() {
+        val reply = endpoint.attach(porterApplication(mock(IBinder::class.java)), attachArgs(PACKAGE, PorterProtocol.VERSION + 3))
+
+        assertFalse(reply.getBoolean(REPLY_UNSUPPORTED))
+        assertEquals(PorterProtocol.VERSION + 3, clients.findClient(CLIENT_UID, CLIENT_PID)!!.apiVersion)
+    }
+
+    /** The floor is checked on every attach, not only the one that created the record. */
+    @Test
+    fun aReattachBelowTheFloorIsRefusedAndLeavesTheRecordAlone() {
+        endpoint.attach(porterApplication(mock(IBinder::class.java)), attachArgs(PACKAGE))
+        val first = clients.findClient(CLIENT_UID, CLIENT_PID)
+
+        val reply = endpoint.attach(porterApplication(mock(IBinder::class.java)), attachArgs(PACKAGE, 1))
+
+        assertTrue(reply.getBoolean(REPLY_UNSUPPORTED))
+        assertSame(first, clients.findClient(CLIENT_UID, CLIENT_PID))
+        assertEquals(PorterProtocol.VERSION, first!!.apiVersion)
     }
 
     /** A racing second attach cannot be scheduled deterministically; the monitor it needs can. */
@@ -211,9 +276,9 @@ class PorterEndpointAttachTest {
             return application
         }
 
-        fun attachArgs(packageName: String): Bundle = Bundle().apply {
+        fun attachArgs(packageName: String, version: Int = PorterProtocol.VERSION): Bundle = Bundle().apply {
             putString(ATTACH_PACKAGE_NAME, packageName)
-            putInt(ATTACH_PROTOCOL_VERSION, PorterProtocol.VERSION)
+            putInt(ATTACH_PROTOCOL_VERSION, version)
         }
     }
 }

@@ -3,7 +3,6 @@ package eu.darken.porter.endpoint
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
-import eu.darken.porter.core.ManagerOperations
 import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PACKAGE_NAME
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PROTOCOL_VERSION
@@ -49,7 +48,6 @@ class PorterEndpointPermissionStateTest {
             ServerTestSupport.newCore(clients, ServerTestSupport.TestUserServiceManager(), config, ServerTestSupport.TestPolicy()) {
                 listOf(PACKAGE)
             },
-            mock(ManagerOperations::class.java),
         )
 
         ShadowBinder.setCallingUid(CLIENT_UID)

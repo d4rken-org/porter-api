@@ -9,8 +9,10 @@ import android.os.IBinder
 import android.text.format.DateUtils
 import android.util.ArrayMap
 import eu.darken.porter.core.CallerIdentity
+import eu.darken.porter.core.UserServiceBindResult
 import eu.darken.porter.core.UserServiceConnection
 import eu.darken.porter.core.UserServiceOptions
+import eu.darken.porter.core.UserServiceRemoveResult
 import java.util.Collections
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
@@ -18,6 +20,7 @@ import moe.shizuku.server.IShizukuServiceConnection
 import rikka.hidden.compat.PackageManagerApis
 import rikka.shizuku.server.legacy.LegacyServiceConnection
 import rikka.shizuku.server.legacy.LegacyUserServiceOptions
+import rikka.shizuku.server.legacy.LegacyUserServiceResults
 import rikka.shizuku.server.util.AbiUtil
 import rikka.shizuku.server.util.Logger
 import rikka.shizuku.server.util.UserHandleCompat
@@ -45,13 +48,16 @@ abstract class UserServiceManager {
         return packageInfo
     }
 
-    fun removeUserService(conn: IShizukuServiceConnection?, options: Bundle): Int = removeUserService(
-        CallerIdentity.fromBinder(),
-        if (conn == null) null else LegacyServiceConnection(conn),
-        LegacyUserServiceOptions.decodeForRemove(options),
+    /** The Shizuku wire's entry point, answering in its integers. */
+    fun removeUserService(conn: IShizukuServiceConnection?, options: Bundle): Int = LegacyUserServiceResults.encodeRemove(
+        removeUserService(
+            CallerIdentity.fromBinder(),
+            if (conn == null) null else LegacyServiceConnection(conn),
+            LegacyUserServiceOptions.decodeForRemove(options),
+        ),
     )
 
-    fun removeUserService(caller: CallerIdentity, conn: UserServiceConnection?, options: UserServiceOptions): Int {
+    fun removeUserService(caller: CallerIdentity, conn: UserServiceConnection?, options: UserServiceOptions): UserServiceRemoveResult {
         val appId = caller.appId()
         val userId = caller.userId()
 
@@ -59,17 +65,17 @@ abstract class UserServiceManager {
         ensureCallingPackageForUserService(packageName, appId, userId)
 
         (options.className() ?: throw NullPointerException("class is null"))
-        val key = options.key()
+        val key = options.key(userId)
 
         synchronized(this) {
-            val record = getUserServiceRecordLocked(key) ?: return 1
+            val record = getUserServiceRecordLocked(key) ?: return UserServiceRemoveResult.NoSuchRecord
             if (options.remove) {
                 removeUserServiceLocked(record)
             } else {
                 record.callbacks.unregister(conn)
             }
         }
-        return 0
+        return UserServiceRemoveResult.Removed
     }
 
     /**
@@ -97,19 +103,22 @@ abstract class UserServiceManager {
         if (detached != null) cleanupExecutor.execute { detached.destroy() }
     }
 
+    /** The Shizuku wire's entry point, answering in the integers of [callingApiVersion]. */
     fun addUserService(conn: IShizukuServiceConnection?, options: Bundle?, callingApiVersion: Int): Int {
         (conn ?: throw NullPointerException("connection is null"))
         (options ?: throw NullPointerException("options is null"))
 
-        return addUserService(
-            CallerIdentity.fromBinder(),
-            LegacyServiceConnection(conn),
-            LegacyUserServiceOptions.decodeForBind(options),
+        return LegacyUserServiceResults.encodeBind(
+            addUserService(
+                CallerIdentity.fromBinder(),
+                LegacyServiceConnection(conn),
+                LegacyUserServiceOptions.decodeForBind(options),
+            ),
             callingApiVersion,
         )
     }
 
-    fun addUserService(caller: CallerIdentity, conn: UserServiceConnection, options: UserServiceOptions, callingApiVersion: Int): Int {
+    fun addUserService(caller: CallerIdentity, conn: UserServiceConnection, options: UserServiceOptions): UserServiceBindResult {
         val uid = caller.uid
         val appId = caller.appId()
         val userId = caller.userId()
@@ -126,7 +135,7 @@ abstract class UserServiceManager {
         val noCreate = options.noCreate
         val daemon = options.daemon
         val use32Bits = options.use32Bit
-        val key = options.key()
+        val key = options.key(userId)
 
         synchronized(this) {
             var record = getUserServiceRecordLocked(key)
@@ -145,20 +154,11 @@ abstract class UserServiceManager {
                     val service = record.service
                     if (service != null && service.pingBinder()) {
                         record.broadcastBinderReceived()
-
-                        return if (callingApiVersion >= 13) {
-                            record.versionCode
-                        } else {
-                            0
-                        }
+                        return UserServiceBindResult.Running(record.versionCode)
                     }
                 }
 
-                return if (callingApiVersion >= 13) {
-                    -1
-                } else {
-                    1
-                }
+                return UserServiceBindResult.NotRunning
             } else {
                 val newRecord = createUserServiceRecordIfNeededLocked(record, key, versionCode, daemon, packageInfo)
                 newRecord.callbacks.register(conn)
@@ -173,9 +173,9 @@ abstract class UserServiceManager {
                         startUserService(newRecord, key, newRecord.token, packageName, className, processNameSuffix, uid, use32Bits, debug)
                     }
                     executor.execute(runnable)
-                    return 0
+                    return UserServiceBindResult.Bound
                 }
-                return 0
+                return UserServiceBindResult.Bound
             }
         }
     }
