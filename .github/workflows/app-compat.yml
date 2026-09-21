@@ -19,11 +19,25 @@ jobs:
         with:
           path: porter-api
           persist-credentials: false
+      # An SDK change the app has to follow is developed on an app branch of the same name. Building
+      # that branch is the signal this job exists for; main is what every other change builds against.
+      - name: Pick the app branch to build
+        id: app-ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          ref=main
+          if [ -n "$HEAD_REF" ] && gh api "repos/d4rken-org/porter/branches/$HEAD_REF" --silent 2>/dev/null; then
+            ref="$HEAD_REF"
+          fi
+          echo "Building the Porter app at $ref"
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - name: Checkout Porter app
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
         with:
           repository: d4rken-org/porter
-          ref: main
+          ref: ${{ steps.app-ref.outputs.ref }}
           path: porter
           persist-credentials: false
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 #v5.7.0
