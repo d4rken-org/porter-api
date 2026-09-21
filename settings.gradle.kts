@@ -9,6 +9,7 @@ pluginManagement {
         id("com.android.library") version "8.11.1"
         id("org.jetbrains.kotlin.android") version "2.2.20"
         id("dev.rikka.tools.refine") version "4.4.0"
+        id("org.jetbrains.kotlinx.binary-compatibility-validator") version "0.18.2"
     }
 }
 
