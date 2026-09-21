@@ -1,5 +1,6 @@
 plugins {
     id "com.android.library" apply false
+    id "org.jetbrains.kotlin.android" apply false
 }
 
 apply from: "manifest.gradle"
@@ -40,6 +41,9 @@ subprojects { subproject ->
                 targetCompatibility = JavaVersion.VERSION_11
             }
         }
+    }
+    plugins.withId("org.jetbrains.kotlin.android") {
+        if (publishedModules.contains(subproject.name)) kotlin { explicitApi() }
     }
     plugins.withId("com.android.library") {
         if (!publishedModules.contains(subproject.name)) return
