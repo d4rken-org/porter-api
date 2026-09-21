@@ -1,0 +1,177 @@
+package rikka.shizuku.server
+
+import android.os.Binder
+import android.os.IBinder
+import android.os.Parcel
+import android.os.RemoteCallbackList
+import eu.darken.porter.core.UserServiceConnection
+import java.util.UUID
+import rikka.shizuku.ShizukuApiConstants.USER_SERVICE_TRANSACTION_destroy
+import rikka.shizuku.server.util.HandlerUtil
+import rikka.shizuku.server.util.Logger
+
+abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
+
+    private var startTimeoutCallback: Runnable? = null
+
+    private inner class ConnectionList : RemoteCallbackList<UserServiceConnection>() {
+
+        override fun onCallbackDied(callback: UserServiceConnection) {
+            if (daemon || registeredCallbackCount != 0) {
+                return
+            }
+
+            LOGGER.v("Remove service record %s since it does not run as a daemon and all connections are gone", token)
+            removeSelf()
+        }
+    }
+
+    private val deathRecipient: IBinder.DeathRecipient
+    var token: String = UUID.randomUUID().toString() + "-" + System.currentTimeMillis()
+    var service: IBinder? = null
+    val callbacks: RemoteCallbackList<UserServiceConnection> = ConnectionList()
+    var daemon: Boolean = daemon
+
+    /**
+     * Written under the manager monitor, read from the start executor and the main handler, neither
+     * of which holds it.
+     */
+    @Volatile
+    var starting: Boolean = false
+
+    @Volatile
+    private var removed = false
+
+    /**
+     * Acquired once, with no monitor held, by whoever publishes the binder. [destroy] needs
+     * it and cannot ask the remote for it: that is a synchronous round trip a wedged service never
+     * answers.
+     */
+    @Volatile
+    private var interfaceDescriptor: String? = null
+
+    init {
+        deathRecipient = IBinder.DeathRecipient {
+            LOGGER.v("Binder for service record %s is dead", token)
+            removeSelf()
+        }
+    }
+
+    fun setStartingTimeout(timeoutMillis: Long) {
+        if (starting) {
+            LOGGER.w("Service record %s is already starting", token)
+            return
+        }
+
+        LOGGER.v("Set starting timeout for service record %s: %d", token, timeoutMillis)
+
+        starting = true
+        val callback = Runnable {
+            if (!removed && starting) {
+                LOGGER.w("Service record %s is not started in %d ms", token, timeoutMillis)
+                removeSelf()
+            }
+        }
+        startTimeoutCallback = callback
+        HandlerUtil.mainHandler.postDelayed(callback, timeoutMillis)
+    }
+
+    /**
+     * Marks the record detached from every index. A record only ever goes from live to removed, so
+     * the callers that consult [isRemoved] without the monitor cannot miss a later revival.
+     */
+    fun markRemoved() {
+        removed = true
+        starting = false
+        startTimeoutCallback?.let { HandlerUtil.mainHandler.removeCallbacks(it) }
+    }
+
+    val isRemoved: Boolean get() = removed
+
+    fun setBinder(binder: IBinder, interfaceDescriptor: String?) {
+        LOGGER.v("Binder received for service record %s", token)
+
+        startTimeoutCallback?.let { HandlerUtil.mainHandler.removeCallbacks(it) }
+
+        service = binder
+        this.interfaceDescriptor = interfaceDescriptor
+
+        try {
+            binder.linkToDeath(deathRecipient, 0)
+        } catch (tr: Throwable) {
+            LOGGER.w("linkToDeath %s", token)
+        }
+
+        broadcastBinderReceived()
+    }
+
+    fun broadcastBinderReceived() {
+        LOGGER.v("Broadcast binder received for service record %s", token)
+
+        val service = service
+        val count = callbacks.beginBroadcast()
+        for (i in 0 until count) {
+            try {
+                callbacks.getBroadcastItem(i).connected(checkNotNull(service))
+            } catch (e: Throwable) {
+                LOGGER.w("Failed to call connected %s", token)
+            }
+        }
+        callbacks.finishBroadcast()
+    }
+
+    fun broadcastBinderDied() {
+        LOGGER.v("Broadcast binder died for service record %s", token)
+
+        val count = callbacks.beginBroadcast()
+        for (i in 0 until count) {
+            try {
+                callbacks.getBroadcastItem(i).died()
+            } catch (e: Throwable) {
+                LOGGER.w("Failed to call died %s", token)
+            }
+        }
+        callbacks.finishBroadcast()
+    }
+
+    abstract fun removeSelf()
+
+    fun destroy() {
+        try {
+            val service = service
+            if (service != null) {
+                try {
+                    service.unlinkToDeath(deathRecipient, 0)
+                } catch (tr: Throwable) {
+                    LOGGER.w("unlinkToDeath %s", token)
+                }
+            }
+
+            // A record removed by start timeout never received a binder, so both guards stay.
+            val interfaceDescriptor = interfaceDescriptor
+            if (service != null && interfaceDescriptor != null) {
+                val data = Parcel.obtain()
+                val reply = Parcel.obtain()
+                try {
+                    data.writeInterfaceToken(interfaceDescriptor)
+                    service.transact(USER_SERVICE_TRANSACTION_destroy, data, reply, Binder.FLAG_ONEWAY)
+                } catch (e: Throwable) {
+                    LOGGER.w("Failed to call destroy %s", token)
+                } finally {
+                    data.recycle()
+                    reply.recycle()
+                }
+            } else if (service != null) {
+                // Parcel.writeInterfaceToken(null) reaches a JNI null check that aborts the process,
+                // which no catch here would see.
+                LOGGER.w("No interface descriptor for service record %s, cannot request destroy", token)
+            }
+        } finally {
+            callbacks.kill()
+        }
+    }
+
+    companion object {
+        protected val LOGGER = Logger("UserServiceRecord")
+    }
+}
