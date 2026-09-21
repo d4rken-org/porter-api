@@ -64,7 +64,10 @@ public class PorterConnection internal constructor(
     /** True once this connection was replaced or died; nothing waiting on it is answered after. */
     private var lost = false
 
-    private val pendingRequests = HashMap<Int, CompletableDeferred<Boolean>>()
+    private val pendingRequests = HashMap<Int, CompletableDeferred<PermissionResult>>()
+
+    /** What the manager answered, and the state generation that answer was applied as. */
+    private class PermissionResult(val allowed: Boolean, val pushes: Int)
     private val requestCodes = AtomicInteger()
 
     private val _permission = MutableStateFlow<PermissionState>(PermissionState.Denied(permanentlyDenied = false))
@@ -89,8 +92,10 @@ public class PorterConnection internal constructor(
             // connection sending the request and its server answering, ahead of it being marked
             // lost.
             val current = Porter.isCurrent(this@PorterConnection)
-            val waiting = synchronized(permissionLock) {
-                val waiting = (if (lost) null else pendingRequests.remove(requestCode)) ?: return
+            val waiting: CompletableDeferred<PermissionResult>
+            val pushes: Int
+            synchronized(permissionLock) {
+                waiting = (if (lost) null else pendingRequests.remove(requestCode)) ?: return
                 // Applied here rather than when the caller resumes: a state push that lands in
                 // between is newer than this result, and the caller may resume after it.
                 if (current) {
@@ -99,10 +104,10 @@ public class PorterConnection internal constructor(
                     permissionStateGeneration++
                     publishPermission()
                 }
-                waiting
+                pushes = permissionStateGeneration
             }
             if (current) {
-                waiting.complete(allowed)
+                waiting.complete(PermissionResult(allowed, pushes))
             } else {
                 waiting.completeExceptionally(PorterConnectionLostException())
             }
@@ -239,21 +244,20 @@ public class PorterConnection internal constructor(
      */
     public suspend fun requestPermission(): PermissionState {
         val requestCode = requestCodes.incrementAndGet()
-        val answer = CompletableDeferred<Boolean>()
+        val answer = CompletableDeferred<PermissionResult>()
         synchronized(permissionLock) {
             if (lost) throw PorterConnectionLostException()
             pendingRequests[requestCode] = answer
         }
         try {
             wire.requestPermission(requestCode)
-            val allowed = answer.await()
-            if (allowed) return synchronized(permissionLock) { _permission.value }
-            // A denial names no rationale flag, so the server is asked for it.
-            val pushes = permissionPushes()
+            val result = answer.await()
+            if (result.allowed) return synchronized(permissionLock) { _permission.value }
+            // A denial names no rationale flag, so the server is asked for it. The answer
+            // describes the denial, so it applies only while that is still the state.
             val rationale = wire.shouldShowRequestPermissionRationale()
             synchronized(permissionLock) {
-                if (permissionStateGeneration == pushes) {
-                    permissionGranted = false
+                if (permissionStateGeneration == result.pushes) {
                     shouldShowRequestPermissionRationale = rationale
                     publishPermission()
                 }
