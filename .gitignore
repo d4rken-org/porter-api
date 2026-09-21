@@ -19,3 +19,5 @@ local.properties
 !/.claude/CLAUDE.md
 !/.claude/rules/
 /out/
+/.pi/*
+!/.pi/settings.json
