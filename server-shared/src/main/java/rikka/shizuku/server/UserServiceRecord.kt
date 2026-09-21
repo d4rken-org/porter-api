@@ -165,6 +165,10 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
                 // Parcel.writeInterfaceToken(null) reaches a JNI null check that aborts the process,
                 // which no catch here would see.
                 LOGGER.w("No interface descriptor for service record %s, cannot request destroy", token)
+            } else {
+                // Nothing was delivered that a caller could watch die, so this is the only way it
+                // learns the binding ended.
+                broadcastBinderDied()
             }
         } finally {
             callbacks.kill()
