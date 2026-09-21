@@ -47,7 +47,7 @@ class PorterWireRoundTripTest {
 
     @Before
     fun setup() {
-        HandlerUtil.setMainHandler(mock(Handler::class.java))
+        HandlerUtil.mainHandler = mock(Handler::class.java)
         config = mock(ConfigManager::class.java)
         clients = ClientManager(config)
         endpoint = PorterEndpoint(
@@ -76,7 +76,7 @@ class PorterWireRoundTripTest {
 
         val connection = connection()
         assertTrue(connection.isAlive)
-        assertEquals(OsUtils.getUid(), connection.uid)
+        assertEquals(OsUtils.uid, connection.uid)
         assertEquals(PorterProtocol.VERSION, connection.serverInfo.version)
         assertEquals(PermissionState.Granted, connection.checkPermission())
     }

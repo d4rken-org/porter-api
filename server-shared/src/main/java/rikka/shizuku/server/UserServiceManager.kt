@@ -1,0 +1,390 @@
+package rikka.shizuku.server
+
+import android.annotation.SuppressLint
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import android.os.IBinder
+import android.text.format.DateUtils
+import android.util.ArrayMap
+import eu.darken.porter.core.CallerIdentity
+import eu.darken.porter.core.UserServiceConnection
+import eu.darken.porter.core.UserServiceOptions
+import java.util.Collections
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import moe.shizuku.server.IShizukuServiceConnection
+import rikka.hidden.compat.PackageManagerApis
+import rikka.shizuku.server.legacy.LegacyServiceConnection
+import rikka.shizuku.server.legacy.LegacyUserServiceOptions
+import rikka.shizuku.server.util.AbiUtil
+import rikka.shizuku.server.util.Logger
+import rikka.shizuku.server.util.UserHandleCompat
+
+abstract class UserServiceManager {
+
+    private val executor: Executor = Executors.newSingleThreadExecutor()
+
+    /** Separate from [executor] so a cleanup cannot delay a service start. */
+    private val cleanupExecutor: Executor = Executors.newSingleThreadExecutor()
+    private val userServiceRecords: MutableMap<String, UserServiceRecord> = Collections.synchronizedMap(ArrayMap())
+    private val packageUserServiceRecords: MutableMap<String, MutableList<UserServiceRecord>> =
+        Collections.synchronizedMap(ArrayMap())
+
+    fun ensureCallingPackageForUserService(packageName: String, appId: Int, userId: Int): PackageInfo {
+        @SuppressLint("UnsafeOptInUsageError")
+        val packageInfo = PackageManagerApis.getPackageInfoNoThrow(packageName, userServiceLookupFlags(), userId)
+        if (packageInfo == null || packageInfo.applicationInfo == null) {
+            throw SecurityException("unable to find package $packageName")
+        }
+
+        if (UserHandleCompat.getAppId(packageInfo.applicationInfo!!.uid) != appId) {
+            throw SecurityException("package $packageName is not owned by $appId")
+        }
+        return packageInfo
+    }
+
+    fun removeUserService(conn: IShizukuServiceConnection?, options: Bundle): Int = removeUserService(
+        CallerIdentity.fromBinder(),
+        if (conn == null) null else LegacyServiceConnection(conn),
+        LegacyUserServiceOptions.decodeForRemove(options),
+    )
+
+    fun removeUserService(caller: CallerIdentity, conn: UserServiceConnection?, options: UserServiceOptions): Int {
+        val appId = caller.appId()
+        val userId = caller.userId()
+
+        val packageName = options.packageName()
+        ensureCallingPackageForUserService(packageName, appId, userId)
+
+        (options.className() ?: throw NullPointerException("class is null"))
+        val key = options.key()
+
+        synchronized(this) {
+            val record = getUserServiceRecordLocked(key) ?: return 1
+            if (options.remove) {
+                removeUserServiceLocked(record)
+            } else {
+                record.callbacks.unregister(conn)
+            }
+        }
+        return 0
+    }
+
+    /**
+     * Detaches [record] from both indexes. Returns null when it was already detached, so a
+     * second removal - binder death racing a start timeout, say - is a no-op rather than a second
+     * `destroy`.
+     */
+    private fun detachUserServiceLocked(record: UserServiceRecord): UserServiceRecord? {
+        val removed = userServiceRecords.values.remove(record)
+        val it = packageUserServiceRecords.entries.iterator()
+        while (it.hasNext()) {
+            val entry = it.next()
+            entry.value.remove(record)
+            if (entry.value.isEmpty()) it.remove()
+        }
+        if (!removed) return null
+        record.markRemoved()
+        onUserServiceRecordRemoved(record)
+        return record
+    }
+
+    private fun removeUserServiceLocked(record: UserServiceRecord) {
+        val detached = detachUserServiceLocked(record)
+        // destroy() talks to the remote; off the monitor, so a wedged daemon cannot block every bind.
+        if (detached != null) cleanupExecutor.execute { detached.destroy() }
+    }
+
+    fun addUserService(conn: IShizukuServiceConnection?, options: Bundle?, callingApiVersion: Int): Int {
+        (conn ?: throw NullPointerException("connection is null"))
+        (options ?: throw NullPointerException("options is null"))
+
+        return addUserService(
+            CallerIdentity.fromBinder(),
+            LegacyServiceConnection(conn),
+            LegacyUserServiceOptions.decodeForBind(options),
+            callingApiVersion,
+        )
+    }
+
+    fun addUserService(caller: CallerIdentity, conn: UserServiceConnection, options: UserServiceOptions, callingApiVersion: Int): Int {
+        val uid = caller.uid
+        val appId = caller.appId()
+        val userId = caller.userId()
+
+        val packageName = (options.packageName() ?: throw NullPointerException("package is null"))
+        val packageInfo = ensureCallingPackageForUserService(packageName, appId, userId)
+
+        val className = (options.className() ?: throw NullPointerException("class is null"))
+        (packageInfo.applicationInfo!!.sourceDir ?: throw NullPointerException("apk path is null"))
+
+        val versionCode = options.versionCode
+        val processNameSuffix = options.processNameSuffix
+        val debug = options.debuggable
+        val noCreate = options.noCreate
+        val daemon = options.daemon
+        val use32Bits = options.use32Bit
+        val key = options.key()
+
+        synchronized(this) {
+            var record = getUserServiceRecordLocked(key)
+            // Before the branch: noCreate hands back the existing binder without ever reaching
+            // createUserServiceRecordIfNeededLocked, so a check placed there would miss it. Package
+            // name ownership alone is satisfied by whoever installed over the name last.
+            if (record != null && !canReuseUserServiceRecord(record, packageInfo)) {
+                LOGGER.w("Service record %s (%s) does not belong to the current installation of %s", key, record.token, packageName)
+                removeUserServiceLocked(record)
+                record = null
+            }
+            if (noCreate) {
+                if (record != null) {
+                    record.callbacks.register(conn)
+
+                    val service = record.service
+                    if (service != null && service.pingBinder()) {
+                        record.broadcastBinderReceived()
+
+                        return if (callingApiVersion >= 13) {
+                            record.versionCode
+                        } else {
+                            0
+                        }
+                    }
+                }
+
+                return if (callingApiVersion >= 13) {
+                    -1
+                } else {
+                    1
+                }
+            } else {
+                val newRecord = createUserServiceRecordIfNeededLocked(record, key, versionCode, daemon, packageInfo)
+                newRecord.callbacks.register(conn)
+
+                val service = newRecord.service
+                if (service != null && service.pingBinder()) {
+                    newRecord.broadcastBinderReceived()
+                } else if (!newRecord.starting) {
+                    newRecord.setStartingTimeout(DateUtils.SECOND_IN_MILLIS * 30)
+
+                    val runnable = Runnable {
+                        startUserService(newRecord, key, newRecord.token, packageName, className, processNameSuffix, uid, use32Bits, debug)
+                    }
+                    executor.execute(runnable)
+                    return 0
+                }
+                return 0
+            }
+        }
+    }
+
+    /**
+     * Whether [record] may still be handed to a caller whose installation is described by
+     * [packageInfo]. Called with the monitor held, before either hand-over path. The default
+     * accepts every record; an implementation that records an identity compares it here.
+     */
+    open fun canReuseUserServiceRecord(record: UserServiceRecord, packageInfo: PackageInfo): Boolean = true
+
+    private fun getUserServiceRecordLocked(key: String): UserServiceRecord? = userServiceRecords[key]
+
+    private fun createUserServiceRecordIfNeededLocked(
+        record: UserServiceRecord?,
+        key: String,
+        versionCode: Int,
+        daemon: Boolean,
+        packageInfo: PackageInfo,
+    ): UserServiceRecord {
+        if (record != null) {
+            val service = record.service
+            if (record.versionCode != versionCode) {
+                LOGGER.v("Remove service record %s (%s) because version code not matched (old=%d, new=%d)", key, record.token, record.versionCode, versionCode)
+            } else if (!record.starting && (service == null || !service.pingBinder())) {
+                LOGGER.v("Service in record %s (%s) is dead", key, record.token)
+            } else {
+                LOGGER.i("Found existing service record %s (%s)", key, record.token)
+
+                if (record.daemon != daemon) {
+                    record.daemon = daemon
+                }
+                return record
+            }
+
+            removeUserServiceLocked(record)
+        }
+
+        val created = object : UserServiceRecord(versionCode, daemon) {
+
+            override fun removeSelf() {
+                synchronized(this@UserServiceManager) {
+                    removeUserServiceLocked(this)
+                }
+            }
+        }
+
+        val packageName = packageInfo.packageName
+        var list = packageUserServiceRecords[packageName]
+        if (list == null) {
+            list = Collections.synchronizedList(ArrayList<UserServiceRecord>())
+            packageUserServiceRecords[packageName] = list
+        }
+        list.add(created)
+
+        onUserServiceRecordCreated(created, packageInfo)
+
+        userServiceRecords[key] = created
+        LOGGER.i("New service record %s (%s): version=%d, daemon=%s, apk=%s", key, created.token, versionCode, daemon.toString(), packageInfo.applicationInfo!!.sourceDir)
+        return created
+    }
+
+    private fun startUserService(
+        record: UserServiceRecord,
+        key: String,
+        token: String,
+        packageName: String,
+        classname: String,
+        processNameSuffix: String?,
+        callingUid: Int,
+        use32Bits: Boolean,
+        debug: Boolean,
+    ) {
+        // The task waited on the start executor; whoever removed the record in the meantime wanted
+        // the service gone, not started. A removal landing after the second guard still spawns.
+        if (record.isRemoved) {
+            LOGGER.v("Service record %s (%s) was removed before it could start", key, token)
+            return
+        }
+
+        LOGGER.v("Starting process for service record %s (%s)...", key, token)
+
+        val cmd = getUserServiceStartCmd(record, key, token, packageName, classname, processNameSuffix, callingUid, use32Bits && AbiUtil.has32Bit(), debug)
+        val exitCode: Int
+        try {
+            if (record.isRemoved) {
+                LOGGER.v("Service record %s (%s) was removed before it could start", key, token)
+                return
+            }
+            val process = Runtime.getRuntime().exec("sh")
+            val os = process.outputStream
+            os.write(cmd.toByteArray())
+            os.flush()
+            os.close()
+
+            exitCode = process.waitFor()
+        } catch (e: Throwable) {
+            throw IllegalStateException(e.message)
+        }
+        if (exitCode != 0) {
+            throw IllegalStateException("sh exited with $exitCode")
+        }
+    }
+
+    abstract fun getUserServiceStartCmd(
+        record: UserServiceRecord,
+        key: String,
+        token: String,
+        packageName: String,
+        classname: String,
+        processNameSuffix: String?,
+        callingUid: Int,
+        use32Bits: Boolean,
+        debug: Boolean,
+    ): String
+
+    private fun sendUserServiceLocked(binder: IBinder, token: String, interfaceDescriptor: String?) {
+        val entry = userServiceRecords.entries.firstOrNull { it.value.token == token }
+            ?: throw IllegalArgumentException("unable to find token $token")
+
+        val record = entry.value
+        if (record.isRemoved) {
+            throw IllegalArgumentException("service record for token $token is removed")
+        }
+
+        LOGGER.v("Received binder for service record %s", token)
+
+        record.setBinder(binder, interfaceDescriptor)
+    }
+
+    fun attachUserService(binder: IBinder?, options: Bundle) {
+        (binder ?: throw NullPointerException("binder is null"))
+        attachUserService(binder, options, getInterfaceDescriptor(binder))
+    }
+
+    fun attachUserService(binder: IBinder?, options: Bundle, interfaceDescriptor: String?) {
+        (binder ?: throw NullPointerException("binder is null"))
+        attachUserService(binder, LegacyUserServiceOptions.decodeToken(options), interfaceDescriptor)
+    }
+
+    fun attachUserService(binder: IBinder?, token: String, interfaceDescriptor: String?) {
+        (binder ?: throw NullPointerException("binder is null"))
+
+        synchronized(this) {
+            sendUserServiceLocked(binder, token, interfaceDescriptor)
+        }
+    }
+
+    /** Whether a live, non-removed record carries [token]. */
+    fun isUserServiceTokenLive(token: String?): Boolean {
+        if (token == null) return false
+        synchronized(this) {
+            for (record in userServiceRecords.values) {
+                if (token == record.token) {
+                    return !record.isRemoved
+                }
+            }
+        }
+        return false
+    }
+
+    open fun onUserServiceRecordCreated(record: UserServiceRecord, packageInfo: PackageInfo) {
+    }
+
+    open fun onUserServiceRecordRemoved(record: UserServiceRecord) {
+    }
+
+    fun removeUserServicesForPackage(packageName: String) {
+        val snapshot: List<UserServiceRecord>
+        synchronized(this) {
+            val list = packageUserServiceRecords[packageName] ?: return
+            // removeSelf() prunes this very list, so iterating it directly invalidates the iterator.
+            snapshot = ArrayList(list)
+        }
+        for (record in snapshot) {
+            record.removeSelf()
+            LOGGER.i("Remove user service %s for package %s", record.token, packageName)
+        }
+    }
+
+    companion object {
+
+        protected val LOGGER = Logger("UserServiceManager")
+
+        /**
+         * The signing flags ride along with the authorising lookup so that whoever records or compares a
+         * binder's identity never needs a second call to the package manager under the monitor.
+         */
+        @Suppress("DEPRECATION")
+        private fun userServiceLookupFlags(): Long {
+            val flags = 0x00002000L /*PackageManager.MATCH_UNINSTALLED_PACKAGES*/
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                return flags or PackageManager.GET_SIGNING_CERTIFICATES.toLong()
+            }
+            return flags or PackageManager.GET_SIGNATURES.toLong()
+        }
+
+        /**
+         * Must be called with no monitor held: this is a synchronous binder round trip, and Binder has
+         * no client-side timeout.
+         */
+        fun getInterfaceDescriptor(binder: IBinder?): String? {
+            if (binder == null) return null
+            return try {
+                binder.interfaceDescriptor
+            } catch (tr: Throwable) {
+                LOGGER.w(tr, "getInterfaceDescriptor")
+                null
+            }
+        }
+    }
+}
