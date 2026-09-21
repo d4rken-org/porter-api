@@ -4,14 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "eu.darken.porter.protocol"
+    namespace = "eu.darken.porter.manager.protocol"
     buildFeatures {
         buildConfig = false
         aidl = true
     }
-    // Exported for other modules' AIDL to import; parcelables travel on their own, interfaces
-    // only when named here.
-    aidlPackagedList = mutableListOf("eu/darken/porter/server/IPorterRemoteProcess.aidl")
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -32,5 +29,6 @@ kotlin {
 }
 
 dependencies {
-    implementation("androidx.annotation:annotation:1.3.0")
+    // IPorterManager hands out the protocol's IPorterRemoteProcess.
+    api(project(":protocol"))
 }
