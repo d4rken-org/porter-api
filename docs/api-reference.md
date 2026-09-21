@@ -20,13 +20,13 @@ Every call on a `PorterConnection` goes to the server it was attached to, whiche
 
 ### Request permission
 
-`connection.permission` is a `StateFlow<PermissionState>`, `Granted` or `Denied(shouldShowRationale)`, holding what the attach reply said and every state the server pushed since. `checkPermission()` asks the server again and puts the answer there. `requestPermission()` asks the manager to prompt the user and suspends until the user answers:
+`connection.permission` is a `StateFlow<PermissionState>`, `Granted` or `Denied(permanentlyDenied)`, holding what the attach reply said and every state the server pushed since. `checkPermission()` asks the server again and puts the answer there. `requestPermission()` asks the manager to prompt the user and suspends until the user answers:
 
 ```kotlin
 suspend fun ensureAccess(connection: PorterConnection): Boolean {
     when (val state = connection.checkPermission()) {
         PermissionState.Granted -> return true
-        is PermissionState.Denied -> if (state.shouldShowRationale) {
+        is PermissionState.Denied -> if (state.permanentlyDenied) {
             // The user chose "deny and don't ask again"; a request would be refused silently.
             return false
         }

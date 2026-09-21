@@ -67,7 +67,7 @@ internal class RedF4RevokedPermissionTest {
         assertSame("the serving connection was not restored", serving, Porter.connection.value!!.binder)
         assertEquals(
             "the revoked permission survived the rollback",
-            PermissionState.Denied(shouldShowRationale = true), connection.checkPermission(),
+            PermissionState.Denied(permanentlyDenied = true), connection.checkPermission(),
         )
     }
 
