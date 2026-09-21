@@ -16,7 +16,7 @@ lifecycleScope.launch {
 
 `Porter.availability(context)` says how far away the manager is when nothing is connected: `NOT_INSTALLED`, `INSTALLED_UNRECOGNIZED`, `INSTALLED_NOT_CONNECTED`, `INCOMPATIBLE` or `CONNECTED`. `INCOMPATIBLE` means a service answered and the two sides share no protocol version; `Porter.incompatibility` carries the version pair, with `serverTooOld` (update Porter) and `clientTooOld` (update this app's SDK). Versions are cumulative, so a newer peer on either side is never a reason by itself.
 
-Every call on a `PorterConnection` goes to the server it was attached to, whichever connection `Porter.connection` holds by then. A connection that was replaced or died answers with `PorterRemoteException` from then on.
+Every call on a `PorterConnection` goes to the server it was attached to, whichever connection `Porter.connection` holds by then. Once that server's binder has died, every call answers with `PorterRemoteException`. A connection that was replaced while its server is still running keeps serving calls to that server; what ends with the replacement is `requestPermission()`, which fails with `PorterConnectionLostException`, and its user service flows, which complete.
 
 ### Request permission
 
