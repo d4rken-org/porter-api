@@ -22,6 +22,7 @@ import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyInt
 import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
+import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
 import org.robolectric.RobolectricTestRunner
@@ -134,6 +135,55 @@ class PorterEndpointTransactTest {
 
             assertThrows(SecurityException::class.java) {
                 endpoint.onTransact(PorterProtocol.TRANSACTION_transactRemote, data, reply, 0)
+            }
+        } finally {
+            data.recycle()
+            reply.recycle()
+        }
+    }
+
+    /**
+     * A binder of the server process arrives as the local object, and a forwarded call on it
+     * would carry the server's own identity, which the manager gate admits.
+     */
+    @Test
+    @Throws(Exception::class)
+    fun transactRemoteRefusesATargetInsideTheServerProcess() {
+        attachAllowedClient()
+        val managerOperations = mock(ManagerOperations::class.java)
+        val local = PorterManagerEndpoint(core, managerOperations)
+
+        for (target in listOf<android.os.Binder>(local, endpoint)) {
+            val data = Parcel.obtain()
+            val reply = Parcel.obtain()
+            try {
+                data.writeInterfaceToken(PorterProtocol.DESCRIPTOR)
+                data.writeStrongBinder(target)
+                data.writeInt(IBinder.FIRST_CALL_TRANSACTION + 2)
+                data.writeInt(0)
+                data.setDataPosition(0)
+
+                assertThrows(SecurityException::class.java) {
+                    endpoint.onTransact(PorterProtocol.TRANSACTION_transactRemote, data, reply, 0)
+                }
+            } finally {
+                data.recycle()
+                reply.recycle()
+            }
+        }
+        verify(managerOperations, never()).exit()
+
+        val legacy = ShizukuLegacyEndpoint(core, managerOperations)
+        val data = Parcel.obtain()
+        val reply = Parcel.obtain()
+        try {
+            data.writeInterfaceToken(ShizukuApiConstants.BINDER_DESCRIPTOR)
+            data.writeStrongBinder(local)
+            data.writeInt(IBinder.FIRST_CALL_TRANSACTION + 2)
+            data.setDataPosition(0)
+
+            assertThrows(SecurityException::class.java) {
+                legacy.onTransact(ShizukuApiConstants.BINDER_TRANSACTION_transact, data, reply, 0)
             }
         } finally {
             data.recycle()
