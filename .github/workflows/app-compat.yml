@@ -20,18 +20,41 @@ jobs:
           path: porter-api
           persist-credentials: false
       # An SDK change the app has to follow is developed on an app branch of the same name. Building
-      # that branch is the signal this job exists for; main is what every other change builds against.
+      # that branch is the signal this job exists for. A PR stacked on such a change pairs with its
+      # base branch's app branch; main is what every other change builds against.
       - name: Pick the app branch to build
         id: app-ref
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
         run: |
+          set -euo pipefail
+          # 0: the app has this branch. 1: GitHub answered 404. Anything else (rate limit, network,
+          # auth) aborts the step with gh's output instead of quietly building main.
+          app_branch_exists() {
+            local reply status
+            if reply=$(gh api "repos/d4rken-org/porter/branches/$1" --include 2>&1); then
+              return 0
+            fi
+            status=$(printf '%s\n' "$reply" | sed -n '1s#^HTTP/[0-9.]* \([0-9]\{3\}\) .*#\1#p')
+            if [ "$status" = 404 ]; then
+              return 1
+            fi
+            echo "::error::Looking up app branch '$1' failed (HTTP ${status:-none})"
+            printf '%s\n' "$reply"
+            exit 1
+          }
           ref=main
-          if [ -n "$HEAD_REF" ] && gh api "repos/d4rken-org/porter/branches/$HEAD_REF" --silent 2>/dev/null; then
+          reason="the default"
+          if [ -n "$HEAD_REF" ] && app_branch_exists "$HEAD_REF"; then
             ref="$HEAD_REF"
+            reason="matches this PR's head branch"
+          elif [ -n "$BASE_REF" ] && [ "$BASE_REF" != main ] && app_branch_exists "$BASE_REF"; then
+            ref="$BASE_REF"
+            reason="matches this PR's base branch"
           fi
-          echo "Building the Porter app at $ref"
+          echo "Building the Porter app at $ref ($reason)"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
       - name: Checkout Porter app
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
