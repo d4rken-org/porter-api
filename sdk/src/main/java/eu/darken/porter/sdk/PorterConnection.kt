@@ -280,7 +280,15 @@ public class PorterConnection internal constructor(
             waiting
         }
         for (request in waiting) request.completeExceptionally(PorterConnectionLostException())
-        userServices.close()
+        // A server that is still running keeps every callback it was given until told otherwise;
+        // one that is not answers nothing, so it is not asked.
+        val bindings = userServices.close()
+        if (bindings.isEmpty() || !binder.pingBinder()) return
+        // Off the calling thread, which may be the main one: a server that stalls in the call would
+        // otherwise stall the app, and nothing here waits for the answer.
+        val unbind = Thread({ for (binding in bindings) dropOnServer(binding) }, "porter-unbind")
+        unbind.isDaemon = true
+        unbind.start()
     }
 
     // --------------------- calls on the server ----------------------
@@ -370,6 +378,9 @@ public class PorterConnection internal constructor(
             if (registration.inserted) registration.connection.removeListener(listener)
             throw e
         }
+        // Registered here before the connection was lost, and on the server after its bindings
+        // were dropped there, so this one is dropped on its own. The listener was told of the loss.
+        if (userServices.isClosed()) dropOnServer(registration.connection)
         if (!start && result == USER_SERVICE_RESULT_NOT_RUNNING) close()
         awaitClose { release(args, registration.connection, listener) }
     }.distinctUntilChanged { old, new -> old === new }
@@ -390,8 +401,12 @@ public class PorterConnection internal constructor(
         if (!last) return
         // The connection is a Binder the server still holds, so it would keep receiving "connected"
         // and "died" and keep calling back after a later bind. Drop it on the server.
+        dropOnServer(connection)
+    }
+
+    private fun dropOnServer(binding: PorterServiceConnection) {
         try {
-            wire.removeUserService(connection, args, remove = false)
+            wire.removeUserService(binding, binding.args, remove = false)
         } catch (e: RuntimeException) {
             Log.w(TAG, "could not drop the user service binding: $e")
         }

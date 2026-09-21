@@ -9,7 +9,7 @@ import java.util.EnumMap
 
 internal class PorterServiceConnection(
     private val registry: PorterServiceConnections,
-    args: UserServiceArgs,
+    val args: UserServiceArgs,
 ) : UserServiceCallback {
 
     /** Guarded by [PorterServiceConnections.lock]. */

@@ -37,6 +37,9 @@ internal class PorterServiceConnections {
         Registration(connection, connection.addListener(listener))
     }
 
+    /** Whether [close] has run. */
+    fun isClosed(): Boolean = synchronized(lock) { closed }
+
     /** The cached connection for [args], and null when nothing is bound under it. */
     fun peek(args: UserServiceArgs): PorterServiceConnection? = synchronized(lock) {
         cache[key(args)]
@@ -88,13 +91,16 @@ internal class PorterServiceConnections {
      * Ends every binding as a death of its service would, and refuses every registration from now
      * on. For a connection that was replaced or died: whatever its server still pushes describes a
      * binding nobody collects any more.
+     *
+     * @return the bindings that were live, which the server may still hold
      */
-    fun close() {
+    fun close(): List<PorterServiceConnection> {
         val bindings = synchronized(lock) {
             closed = true
             cache.values.toList()
         }
         for (binding in bindings) binding.died()
+        return bindings
     }
 
     private fun evict(connection: PorterServiceConnection): List<String> {
