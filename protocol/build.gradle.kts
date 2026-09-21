@@ -4,10 +4,14 @@ plugins {
 }
 
 android {
-    namespace = "rikka.shizuku.shared"
+    namespace = "eu.darken.porter.protocol"
+    buildFeatures {
+        buildConfig = false
+        aidl = true
+    }
     buildTypes {
         release {
-            minifyEnabled = false
+            isMinifyEnabled = false
         }
     }
     compileOptions {
@@ -25,13 +29,5 @@ kotlin {
 }
 
 dependencies {
-    implementation project(":aidl")
-
-    implementation "androidx.annotation:annotation:1.3.0"
-}
-
-ext {
-    publishLibrary = true
-    POM_NAME = "Shizuku API - shared"
-    POM_DESCRIPTION = "Shared parts for the API of Shizuku and Sui."
+    implementation("androidx.annotation:annotation:1.3.0")
 }

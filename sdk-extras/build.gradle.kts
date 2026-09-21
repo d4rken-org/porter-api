@@ -11,7 +11,7 @@ android {
     buildFeatures {
         buildConfig = false
     }
-    testOptions { unitTests.includeAndroidResources = true }
+    testOptions { unitTests.isIncludeAndroidResources = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -27,14 +27,14 @@ kotlin {
 }
 
 dependencies {
-    api project(":sdk")
+    api(project(":sdk"))
 
-    implementation "androidx.annotation:annotation:1.3.0"
+    implementation("androidx.annotation:annotation:1.3.0")
 
-    testImplementation "junit:junit:4.13.2"
-    testImplementation "org.robolectric:robolectric:4.16.1"
-    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2"
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 
-    androidTestImplementation "androidx.test.ext:junit:1.2.1"
-    androidTestImplementation "androidx.test:runner:1.6.2"
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }

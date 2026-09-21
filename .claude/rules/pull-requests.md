@@ -24,10 +24,10 @@ is `bug`, routine CI maintenance is `Chore`.
 a PR touches: the `c:` components and `Build process`. Do not apply those by hand and do not prune
 them. A component label means the area is touched, including its tests and tooling.
 
-`c: Protocol` is not a breaking-change marker. Editing `aidl/build.gradle` legitimately produces
+`c: Protocol` is not a breaking-change marker. Editing `aidl/build.gradle.kts` legitimately produces
 `c: Protocol` alongside `Build process`. An SDK release version bump is `Build process` alone, because
 release versions are independent of the protocol version; a change to the constants in
-`manifest.gradle` or `ShizukuApiConstants` is what makes a PR a protocol change.
+`PorterProtocol` or `ShizukuApiConstants` is what makes a PR a protocol change.
 
 To correct a durable mapping error, fix `labeler.yml`. Not every mismatch is a glob error: the
 workflow reads its config from the base branch, so a mapping change only takes effect after it merges,

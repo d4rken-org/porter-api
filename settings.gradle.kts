@@ -20,7 +20,7 @@ dependencyResolutionManagement {
         mavenLocal()
     }
     versionCatalogs {
-        libs {
+        create("libs") {
             version("hidden-api", "4.4.0")
             library("hidden-compat", "dev.rikka.hidden", "compat").versionRef("hidden-api")
             library("hidden-stub", "dev.rikka.hidden", "stub").versionRef("hidden-api")
@@ -32,11 +32,10 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "porter-api"
-include ":aidl", ":shared", ":shizuku-compat", ":protocol", ":sdk", ":sdk-extras"
+include(":aidl", ":shared", ":shizuku-compat", ":protocol", ":sdk", ":sdk-extras")
 
-def includeShell = providers.gradleProperty("includeShell").getOrElse("false").toBoolean()
+val includeShell = providers.gradleProperty("includeShell").getOrElse("false").toBoolean()
 
 if (includeShell) {
-    include ":porsh", ":server-shared"
+    include(":porsh", ":server-shared")
 }
-

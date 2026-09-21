@@ -6,12 +6,12 @@ plugins {
 android {
     namespace = "eu.darken.porter.sdk"
     defaultConfig {
-        consumerProguardFiles = ["consumer-rules.pro"]
+        consumerProguardFiles("consumer-rules.pro")
     }
     buildFeatures {
         buildConfig = false
     }
-    testOptions { unitTests.includeAndroidResources = true }
+    testOptions { unitTests.isIncludeAndroidResources = true }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
@@ -27,22 +27,22 @@ kotlin {
 }
 
 dependencies {
-    api project(":protocol")
+    api(project(":protocol"))
 
     // Optional and non-transitive: only an app that declares PorterShizukuApiProvider needs it.
-    compileOnly project(":shizuku-compat")
+    compileOnly(project(":shizuku-compat"))
 
-    api "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2"
+    api("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
 
-    implementation "androidx.annotation:annotation:1.3.0"
+    implementation("androidx.annotation:annotation:1.3.0")
 
     // Test-only: the generated Shizuku stubs decode what the Shizuku wire encodes by hand, and
     // ShizukuApiConstants is where the key strings ShizukuProtocol copies are pinned against.
-    testImplementation project(":aidl")
-    testImplementation project(":shared")
-    testImplementation project(":shizuku-compat")
-    testImplementation "junit:junit:4.13.2"
-    testImplementation "org.robolectric:robolectric:4.16.1"
-    testImplementation "org.mockito:mockito-core:5.14.2"
-    testImplementation "org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2"
+    testImplementation(project(":aidl"))
+    testImplementation(project(":shared"))
+    testImplementation(project(":shizuku-compat"))
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.16.1")
+    testImplementation("org.mockito:mockito-core:5.14.2")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }

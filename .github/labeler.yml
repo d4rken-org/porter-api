@@ -17,9 +17,6 @@
           - "aidl/**"
           - "shared/**"
           - "protocol/**"
-          # Holds the protocol version constants, which is why it is carved
-          # out of the generic *.gradle rule under "Build process" below.
-          - "manifest.gradle"
 
 "c: SDK":
   - changed-files:
@@ -39,12 +36,6 @@
           - "porsh/**"
 
 "Build process":
-  # Every *.gradle except manifest.gradle, which carries protocol constants
-  # rather than build configuration. Both globs must hold for the same file.
-  - changed-files:
-      - all-globs-to-any-file:
-          - "**/*.gradle"
-          - "!manifest.gradle"
   - changed-files:
       - any-glob-to-any-file:
           - "**/*.gradle.kts"
