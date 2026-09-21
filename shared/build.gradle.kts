@@ -4,16 +4,10 @@ plugins {
 }
 
 android {
-    namespace = "moe.shizuku.api"
-    defaultConfig {
-        consumerProguardFiles = ["consumer-rules.pro"]
-    }
-    buildFeatures {
-        buildConfig = false
-    }
+    namespace = "rikka.shizuku.shared"
     buildTypes {
         release {
-            minifyEnabled = false
+            isMinifyEnabled = false
         }
     }
     compileOptions {
@@ -31,5 +25,7 @@ kotlin {
 }
 
 dependencies {
-    implementation "androidx.annotation:annotation:1.3.0"
+    implementation(project(":aidl"))
+
+    implementation("androidx.annotation:annotation:1.3.0")
 }

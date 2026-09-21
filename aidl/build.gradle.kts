@@ -10,17 +10,11 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled = false
+            isMinifyEnabled = false
         }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
-}
-
-ext {
-    publishLibrary = true
-    POM_NAME = "Shizuku API - aidl"
-    POM_DESCRIPTION = "Low level aidl of Shizuku and Sui."
 }

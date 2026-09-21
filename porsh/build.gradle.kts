@@ -9,7 +9,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         externalNativeBuild {
             cmake {
-                arguments = ["-DANDROID_STL=none"]
+                arguments("-DANDROID_STL=none")
             }
         }
     }
@@ -18,7 +18,7 @@ android {
     }
     buildTypes {
         release {
-            minifyEnabled = false
+            isMinifyEnabled = false
         }
     }
     compileOptions {
@@ -32,7 +32,7 @@ android {
         }
     }
     testOptions {
-        unitTests.returnDefaultValues = true
+        unitTests.isReturnDefaultValues = true
     }
 }
 
@@ -43,18 +43,12 @@ kotlin {
 }
 
 dependencies {
-    implementation "androidx.annotation:annotation:1.3.0"
-    implementation "org.lsposed.libcxx:libcxx:27.0.12077973"
+    implementation("androidx.annotation:annotation:1.3.0")
+    implementation("org.lsposed.libcxx:libcxx:27.0.12077973")
 
-    testImplementation "junit:junit:4.13.2"
-    testImplementation "org.mockito:mockito-core:5.14.2"
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.mockito:mockito-core:5.14.2")
 
-    androidTestImplementation "androidx.test.ext:junit:1.2.1"
-    androidTestImplementation "androidx.test:runner:1.6.2"
-}
-
-ext {
-    publishLibrary = false
-    POM_NAME = "PORSH"
-    POM_DESCRIPTION = "PORSH"
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }
