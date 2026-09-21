@@ -26,7 +26,7 @@ Then add:
 implementation("com.github.d4rken-org.porter-api:sdk:0.2.0")
 ```
 
-The SDK is written for Kotlin callers and depends on `kotlinx-coroutines`; it makes no promises about use from Java. It speaks Porter's own protocol and contains only `eu.darken.porter.*` classes. It does not include or conflict with the upstream `dev.rikka.shizuku` SDK, which an app can keep alongside it for original Shizuku support.
+The SDK is written for Kotlin callers and depends on `kotlinx-coroutines`; it makes no promises about use from Java. While the SDK is `0.x` it promises source compatibility only: the public value types (`UserServiceArgs`, `PermissionState.Denied`, `PorterServerInfo`) are Kotlin data classes, and a field added to one changes its constructor and `copy` signatures, so a library built against an earlier `0.x` has to be rebuilt against the new one rather than only run against it. It speaks Porter's own protocol and contains only `eu.darken.porter.*` classes. It does not include or conflict with the upstream `dev.rikka.shizuku` SDK, which an app can keep alongside it for original Shizuku support.
 
 The SDK declares Porter's permission, `eu.darken.porter.permission.API`, in its own manifest. When it connects, the SDK and the service name the protocol version each speaks and the oldest one each still accepts; a newer peer is fine, and where the two do not overlap no connection is published, `Porter.availability(context)` answers `INCOMPATIBLE` and `Porter.incompatibility` says which side has to update. User services are per Android user: a work profile's copy of an app gets its own service process, started with that profile's uid.
 
