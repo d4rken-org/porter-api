@@ -45,6 +45,23 @@ internal class PorterPermissionResultOrderingTest {
     }
 
     @Test
+    fun aGrantPushedAfterADeniedResultIsTheState() = runTest {
+        val fake = FakePorterService()
+        Porter.onBinderReceived(fake, PACKAGE)
+        val connection = Porter.connection.value!!
+
+        val result = async(start = CoroutineStart.UNDISPATCHED) { connection.requestPermission() }
+        fake.pushRequestPermissionResult(fake.requestedPermissionCode, allowed = false)
+        assertEquals(PermissionState.Denied(permanentlyDenied = false), connection.permission.value)
+
+        // Pushed before the caller's coroutine has resumed and asked whether the denial is permanent.
+        fake.pushPermissionState(permissionState(granted = true, permanentlyDenied = false))
+
+        assertEquals(PermissionState.Granted, result.await())
+        assertEquals("the answer about the denial overwrote the grant that followed it", PermissionState.Granted, connection.permission.value)
+    }
+
+    @Test
     fun anAllowedResultIsTheStateWhenNothingNewerFollows() = runTest {
         val fake = FakePorterService()
         Porter.onBinderReceived(fake, PACKAGE)
