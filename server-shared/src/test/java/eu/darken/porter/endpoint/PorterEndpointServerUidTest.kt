@@ -8,6 +8,7 @@ import android.os.Parcel
 import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PACKAGE_NAME
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PROTOCOL_VERSION
+import eu.darken.porter.protocol.PorterProtocol.PERMISSION_RESULT_ALLOWED
 import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_COMPONENT
 import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_REMOVE
 import eu.darken.porter.server.IPorterApplication
@@ -21,8 +22,10 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mockito.ArgumentCaptor
 import org.mockito.ArgumentMatchers.any
 import org.mockito.ArgumentMatchers.anyInt
+import org.mockito.ArgumentMatchers.eq
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
@@ -94,6 +97,19 @@ class PorterEndpointServerUidTest {
         }
     }
 
+    private fun porsh(code: Int) {
+        val data = Parcel.obtain()
+        val reply = Parcel.obtain()
+        try {
+            data.writeInterfaceToken(PorterProtocol.DESCRIPTOR)
+            data.setDataPosition(0)
+            endpoint.onTransact(PorterProtocol.TRANSACTION_PORSH_BASE + code, data, reply, 0)
+        } finally {
+            data.recycle()
+            reply.recycle()
+        }
+    }
+
     private fun assertEveryGatedOperationIsRefused() {
         assertThrows(SecurityException::class.java) { endpoint.uid }
         assertThrows(SecurityException::class.java) { endpoint.checkPermission("android.permission.DUMP") }
@@ -103,6 +119,22 @@ class PorterEndpointServerUidTest {
         assertThrows(SecurityException::class.java) { endpoint.addUserService(connection(), bindArgs()) }
         assertThrows(SecurityException::class.java) { endpoint.removeUserService(connection(), removeArgs()) }
         assertThrows(SecurityException::class.java) { transactRemote() }
+        assertThrows(SecurityException::class.java) { porsh(PORSH_CREATE_HOST) }
+        assertThrows(SecurityException::class.java) { porsh(PORSH_SET_WINDOW_SIZE) }
+        assertThrows(SecurityException::class.java) { porsh(PORSH_GET_EXIT_CODE) }
+    }
+
+    private fun assertAttachedCallerIsAnsweredFromItsRecord(uid: Int, pid: Int) {
+        val record = clients.findClient(uid, pid)!!
+
+        assertEveryGatedOperationIsRefused()
+        assertFalse(endpoint.checkSelfPermission())
+
+        record.allowed = true
+
+        assertTrue(endpoint.checkSelfPermission())
+        assertEquals(OsUtils.uid, endpoint.uid)
+        porsh(PORSH_GET_EXIT_CODE)
     }
 
     @Test
@@ -156,21 +188,34 @@ class PorterEndpointServerUidTest {
         endpoint.requestPermission(7)
 
         assertFalse(policy.confirmationShown)
-        verify(application).dispatchRequestPermissionResult(anyInt(), any(Bundle::class.java))
+        val reply = ArgumentCaptor.forClass(Bundle::class.java)
+        verify(application).dispatchRequestPermissionResult(eq(7), reply.capture())
+        assertFalse(reply.value.getBoolean(PERMISSION_RESULT_ALLOWED))
     }
 
     @Test
-    fun anAttachedServerUidWithAGrantIsAnsweredFromItsRecord() {
-        `when`(config.find(OsUtils.uid)).thenReturn(ServerTestSupport.entry(true, false))
+    fun anAttachedServerUidIsAnsweredFromItsRecord() {
+        `when`(config.find(OsUtils.uid)).thenReturn(ServerTestSupport.entry(false, false))
+        val application = attach()
+
+        assertAttachedCallerIsAnsweredFromItsRecord(OsUtils.uid, CLIENT_PID)
+
+        endpoint.requestPermission(9)
+
+        assertFalse(policy.confirmationShown)
+        val reply = ArgumentCaptor.forClass(Bundle::class.java)
+        verify(application).dispatchRequestPermissionResult(eq(9), reply.capture())
+        assertTrue(reply.value.getBoolean(PERMISSION_RESULT_ALLOWED))
+    }
+
+    @Test
+    fun anAttachedCallerFromTheServerProcessIsAnsweredFromItsRecord() {
+        ShadowBinder.setCallingUid(CLIENT_UID)
+        ShadowBinder.setCallingPid(OsUtils.pid)
+        `when`(config.find(CLIENT_UID)).thenReturn(ServerTestSupport.entry(false, false))
         attach()
 
-        assertTrue(endpoint.checkSelfPermission())
-        assertEquals(OsUtils.uid, endpoint.uid)
-
-        clients.findClient(OsUtils.uid, CLIENT_PID)!!.allowed = false
-
-        assertFalse(endpoint.checkSelfPermission())
-        assertThrows(SecurityException::class.java) { endpoint.uid }
+        assertAttachedCallerIsAnsweredFromItsRecord(CLIENT_UID, OsUtils.pid)
     }
 
     private companion object {
@@ -180,6 +225,11 @@ class PorterEndpointServerUidTest {
         /** User 10, app id 10200, so the user id derived from it is not the trivial zero. */
         const val CLIENT_UID = 1010200
         const val CLIENT_PID = 45678
+
+        /** `PorshConfig.TRANSACTION_*`, which are internal to `porsh`. */
+        const val PORSH_CREATE_HOST = 0
+        const val PORSH_SET_WINDOW_SIZE = 1
+        const val PORSH_GET_EXIT_CODE = 2
 
         fun connection(): IPorterServiceConnection {
             val connection = mock(IPorterServiceConnection::class.java)
