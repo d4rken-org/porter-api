@@ -7,22 +7,20 @@ public final class eu/darken/porter/protocol/PorterProtocol {
 	public static final field DELIVERY_METHOD_SEND_BINDER Ljava/lang/String;
 	public static final field DELIVERY_METHOD_SEND_USER_SERVICE Ljava/lang/String;
 	public static final field DESCRIPTOR Ljava/lang/String;
-	public static final field FLAG_ALLOWED I
-	public static final field FLAG_DENIED I
 	public static final field INSTANCE Leu/darken/porter/protocol/PorterProtocol;
 	public static final field MANAGER_APPLICATION_ID Ljava/lang/String;
-	public static final field MASK_PERMISSION I
+	public static final field MIN_VERSION I
 	public static final field PERMISSION Ljava/lang/String;
-	public static final field PERMISSION_CONFIRMATION_ALLOWED Ljava/lang/String;
-	public static final field PERMISSION_CONFIRMATION_ONETIME Ljava/lang/String;
 	public static final field PERMISSION_RESULT_ALLOWED Ljava/lang/String;
 	public static final field PROVIDER_AUTHORITY_SUFFIX Ljava/lang/String;
 	public static final field REPLY_CAPABILITIES Ljava/lang/String;
+	public static final field REPLY_MIN_PROTOCOL_VERSION Ljava/lang/String;
 	public static final field REPLY_PERMISSION_GRANTED Ljava/lang/String;
 	public static final field REPLY_PROTOCOL_VERSION Ljava/lang/String;
 	public static final field REPLY_SERVER_SECONTEXT Ljava/lang/String;
 	public static final field REPLY_SERVER_UID Ljava/lang/String;
 	public static final field REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE Ljava/lang/String;
+	public static final field REPLY_UNSUPPORTED Ljava/lang/String;
 	public static final field TRANSACTION_APP_BASE I
 	public static final field TRANSACTION_PORSH_BASE I
 	public static final field TRANSACTION_transactRemote I
@@ -32,8 +30,12 @@ public final class eu/darken/porter/protocol/PorterProtocol {
 	public static final field USER_SERVICE_NO_CREATE Ljava/lang/String;
 	public static final field USER_SERVICE_PROCESS_NAME_SUFFIX Ljava/lang/String;
 	public static final field USER_SERVICE_REMOVE Ljava/lang/String;
+	public static final field USER_SERVICE_RESULT_BOUND I
+	public static final field USER_SERVICE_RESULT_NOT_RUNNING I
+	public static final field USER_SERVICE_RESULT_NO_SUCH_SERVICE I
 	public static final field USER_SERVICE_TAG Ljava/lang/String;
 	public static final field USER_SERVICE_TOKEN Ljava/lang/String;
+	public static final field USER_SERVICE_TRANSACTION_destroy I
 	public static final field USER_SERVICE_USE_32_BIT Ljava/lang/String;
 	public static final field USER_SERVICE_VERSION_CODE Ljava/lang/String;
 	public static final field VERSION I
@@ -103,21 +105,15 @@ public abstract interface class eu/darken/porter/server/IPorterService : android
 	public static final field DESCRIPTOR Ljava/lang/String;
 	public abstract fun addUserService (Leu/darken/porter/server/IPorterServiceConnection;Landroid/os/Bundle;)I
 	public abstract fun attach (Leu/darken/porter/server/IPorterApplication;Landroid/os/Bundle;)Landroid/os/Bundle;
-	public abstract fun attachUserService (Landroid/os/IBinder;Landroid/os/Bundle;)V
 	public abstract fun checkPermission (Ljava/lang/String;)I
 	public abstract fun checkSelfPermission ()Z
-	public abstract fun dispatchPermissionConfirmationResult (IIILandroid/os/Bundle;)V
-	public abstract fun exit ()V
-	public abstract fun getFlagsForUid (II)I
 	public abstract fun getSELinuxContext ()Ljava/lang/String;
 	public abstract fun getSystemProperty (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 	public abstract fun getUid ()I
-	public abstract fun newProcess ([Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Leu/darken/porter/server/IPorterRemoteProcess;
 	public abstract fun removeUserService (Leu/darken/porter/server/IPorterServiceConnection;Landroid/os/Bundle;)I
 	public abstract fun requestPermission (I)V
 	public abstract fun setSystemProperty (Ljava/lang/String;Ljava/lang/String;)V
 	public abstract fun shouldShowRequestPermissionRationale ()Z
-	public abstract fun updateFlagsForUid (III)V
 }
 
 public class eu/darken/porter/server/IPorterService$Default : eu/darken/porter/server/IPorterService {
@@ -125,21 +121,15 @@ public class eu/darken/porter/server/IPorterService$Default : eu/darken/porter/s
 	public fun addUserService (Leu/darken/porter/server/IPorterServiceConnection;Landroid/os/Bundle;)I
 	public fun asBinder ()Landroid/os/IBinder;
 	public fun attach (Leu/darken/porter/server/IPorterApplication;Landroid/os/Bundle;)Landroid/os/Bundle;
-	public fun attachUserService (Landroid/os/IBinder;Landroid/os/Bundle;)V
 	public fun checkPermission (Ljava/lang/String;)I
 	public fun checkSelfPermission ()Z
-	public fun dispatchPermissionConfirmationResult (IIILandroid/os/Bundle;)V
-	public fun exit ()V
-	public fun getFlagsForUid (II)I
 	public fun getSELinuxContext ()Ljava/lang/String;
 	public fun getSystemProperty (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
 	public fun getUid ()I
-	public fun newProcess ([Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Leu/darken/porter/server/IPorterRemoteProcess;
 	public fun removeUserService (Leu/darken/porter/server/IPorterServiceConnection;Landroid/os/Bundle;)I
 	public fun requestPermission (I)V
 	public fun setSystemProperty (Ljava/lang/String;Ljava/lang/String;)V
 	public fun shouldShowRequestPermissionRationale ()Z
-	public fun updateFlagsForUid (III)V
 }
 
 public abstract class eu/darken/porter/server/IPorterService$Stub : android/os/Binder, eu/darken/porter/server/IPorterService {
