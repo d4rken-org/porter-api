@@ -125,6 +125,14 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         data: Parcel,
         reply: Parcel?,
     ) {
+        // A binder of this very process arrives as the local object, and a call on it would run
+        // with the server's own identity once the caller's is cleared below: the endpoints, whose
+        // manager gate admits that identity, are exactly what a client must not reach this way.
+        if (targetBinder is Binder) {
+            val msg = "Permission Denial: transactRemote from pid=" + caller.pid + " targets a binder of the server process"
+            LOGGER.w(msg)
+            throw SecurityException(msg)
+        }
         if (Logger.debugEnabled()) {
             // Best effort: a descriptor lookup that fails must not stop the caller's transaction
             // from being forwarded, so diagnostics can never change what a client observes.
