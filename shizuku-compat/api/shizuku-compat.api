@@ -1,0 +1,13 @@
+public final class moe/shizuku/api/BinderContainer : android/os/Parcelable {
+	public static final field CREATOR Landroid/os/Parcelable$Creator;
+	public static final field Companion Lmoe/shizuku/api/BinderContainer$Companion;
+	public field binder Landroid/os/IBinder;
+	public fun <init> (Landroid/os/IBinder;)V
+	public synthetic fun <init> (Landroid/os/Parcel;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun describeContents ()I
+	public fun writeToParcel (Landroid/os/Parcel;I)V
+}
+
+public final class moe/shizuku/api/BinderContainer$Companion {
+}
+

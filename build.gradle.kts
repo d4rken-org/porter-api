@@ -4,6 +4,7 @@ import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 plugins {
     id("com.android.library") apply false
     id("org.jetbrains.kotlin.android") apply false
+    id("org.jetbrains.kotlinx.binary-compatibility-validator")
 }
 
 val sdkVersion = providers.gradleProperty("version")
@@ -25,6 +26,12 @@ val moduleLicenses = mapOf(
 allprojects {
     group = "com.github.d4rken-org.porter-api"
     version = sdkVersion
+}
+
+// The published modules carry a committed ABI dump; apiCheck fails on a signature change that
+// apiDump has not been run for.
+apiValidation {
+    ignoredProjects += subprojects.map { it.name }.filter { it !in publishedModules }
 }
 
 subprojects {

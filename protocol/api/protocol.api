@@ -1,0 +1,175 @@
+public final class eu/darken/porter/protocol/PorterProtocol {
+	public static final field ATTACH_PACKAGE_NAME Ljava/lang/String;
+	public static final field ATTACH_PROTOCOL_VERSION Ljava/lang/String;
+	public static final field CAPABILITIES_NONE J
+	public static final field DELIVERY_EXTRA_BINDER Ljava/lang/String;
+	public static final field DELIVERY_METHOD_GET_BINDER Ljava/lang/String;
+	public static final field DELIVERY_METHOD_SEND_BINDER Ljava/lang/String;
+	public static final field DELIVERY_METHOD_SEND_USER_SERVICE Ljava/lang/String;
+	public static final field DESCRIPTOR Ljava/lang/String;
+	public static final field FLAG_ALLOWED I
+	public static final field FLAG_DENIED I
+	public static final field INSTANCE Leu/darken/porter/protocol/PorterProtocol;
+	public static final field MANAGER_APPLICATION_ID Ljava/lang/String;
+	public static final field MASK_PERMISSION I
+	public static final field PERMISSION Ljava/lang/String;
+	public static final field PERMISSION_CONFIRMATION_ALLOWED Ljava/lang/String;
+	public static final field PERMISSION_CONFIRMATION_ONETIME Ljava/lang/String;
+	public static final field PERMISSION_RESULT_ALLOWED Ljava/lang/String;
+	public static final field PROVIDER_AUTHORITY_SUFFIX Ljava/lang/String;
+	public static final field REPLY_CAPABILITIES Ljava/lang/String;
+	public static final field REPLY_PERMISSION_GRANTED Ljava/lang/String;
+	public static final field REPLY_PROTOCOL_VERSION Ljava/lang/String;
+	public static final field REPLY_SERVER_SECONTEXT Ljava/lang/String;
+	public static final field REPLY_SERVER_UID Ljava/lang/String;
+	public static final field REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE Ljava/lang/String;
+	public static final field TRANSACTION_APP_BASE I
+	public static final field TRANSACTION_PORSH_BASE I
+	public static final field TRANSACTION_transactRemote I
+	public static final field USER_SERVICE_COMPONENT Ljava/lang/String;
+	public static final field USER_SERVICE_DAEMON Ljava/lang/String;
+	public static final field USER_SERVICE_DEBUGGABLE Ljava/lang/String;
+	public static final field USER_SERVICE_NO_CREATE Ljava/lang/String;
+	public static final field USER_SERVICE_PROCESS_NAME_SUFFIX Ljava/lang/String;
+	public static final field USER_SERVICE_REMOVE Ljava/lang/String;
+	public static final field USER_SERVICE_TAG Ljava/lang/String;
+	public static final field USER_SERVICE_TOKEN Ljava/lang/String;
+	public static final field USER_SERVICE_USE_32_BIT Ljava/lang/String;
+	public static final field USER_SERVICE_VERSION_CODE Ljava/lang/String;
+	public static final field VERSION I
+}
+
+public abstract interface class eu/darken/porter/server/IPorterApplication : android/os/IInterface {
+	public static final field DESCRIPTOR Ljava/lang/String;
+	public abstract fun dispatchPermissionStateChanged (Landroid/os/Bundle;)V
+	public abstract fun dispatchRequestPermissionResult (ILandroid/os/Bundle;)V
+}
+
+public class eu/darken/porter/server/IPorterApplication$Default : eu/darken/porter/server/IPorterApplication {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public fun dispatchPermissionStateChanged (Landroid/os/Bundle;)V
+	public fun dispatchRequestPermissionResult (ILandroid/os/Bundle;)V
+}
+
+public abstract class eu/darken/porter/server/IPorterApplication$Stub : android/os/Binder, eu/darken/porter/server/IPorterApplication {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public static fun asInterface (Landroid/os/IBinder;)Leu/darken/porter/server/IPorterApplication;
+	public fun onTransact (ILandroid/os/Parcel;Landroid/os/Parcel;I)Z
+}
+
+public class eu/darken/porter/server/IPorterApplication$_Parcel {
+	public fun <init> ()V
+}
+
+public abstract interface class eu/darken/porter/server/IPorterRemoteProcess : android/os/IInterface {
+	public static final field DESCRIPTOR Ljava/lang/String;
+	public abstract fun alive ()Z
+	public abstract fun destroy ()V
+	public abstract fun exitValue ()I
+	public abstract fun getErrorStream ()Landroid/os/ParcelFileDescriptor;
+	public abstract fun getInputStream ()Landroid/os/ParcelFileDescriptor;
+	public abstract fun getOutputStream ()Landroid/os/ParcelFileDescriptor;
+	public abstract fun waitFor ()I
+	public abstract fun waitForTimeout (JLjava/lang/String;)Z
+}
+
+public class eu/darken/porter/server/IPorterRemoteProcess$Default : eu/darken/porter/server/IPorterRemoteProcess {
+	public fun <init> ()V
+	public fun alive ()Z
+	public fun asBinder ()Landroid/os/IBinder;
+	public fun destroy ()V
+	public fun exitValue ()I
+	public fun getErrorStream ()Landroid/os/ParcelFileDescriptor;
+	public fun getInputStream ()Landroid/os/ParcelFileDescriptor;
+	public fun getOutputStream ()Landroid/os/ParcelFileDescriptor;
+	public fun waitFor ()I
+	public fun waitForTimeout (JLjava/lang/String;)Z
+}
+
+public abstract class eu/darken/porter/server/IPorterRemoteProcess$Stub : android/os/Binder, eu/darken/porter/server/IPorterRemoteProcess {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public static fun asInterface (Landroid/os/IBinder;)Leu/darken/porter/server/IPorterRemoteProcess;
+	public fun onTransact (ILandroid/os/Parcel;Landroid/os/Parcel;I)Z
+}
+
+public class eu/darken/porter/server/IPorterRemoteProcess$_Parcel {
+	public fun <init> ()V
+}
+
+public abstract interface class eu/darken/porter/server/IPorterService : android/os/IInterface {
+	public static final field DESCRIPTOR Ljava/lang/String;
+	public abstract fun addUserService (Leu/darken/porter/server/IPorterServiceConnection;Landroid/os/Bundle;)I
+	public abstract fun attach (Leu/darken/porter/server/IPorterApplication;Landroid/os/Bundle;)Landroid/os/Bundle;
+	public abstract fun attachUserService (Landroid/os/IBinder;Landroid/os/Bundle;)V
+	public abstract fun checkPermission (Ljava/lang/String;)I
+	public abstract fun checkSelfPermission ()Z
+	public abstract fun dispatchPermissionConfirmationResult (IIILandroid/os/Bundle;)V
+	public abstract fun exit ()V
+	public abstract fun getFlagsForUid (II)I
+	public abstract fun getSELinuxContext ()Ljava/lang/String;
+	public abstract fun getSystemProperty (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public abstract fun getUid ()I
+	public abstract fun newProcess ([Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Leu/darken/porter/server/IPorterRemoteProcess;
+	public abstract fun removeUserService (Leu/darken/porter/server/IPorterServiceConnection;Landroid/os/Bundle;)I
+	public abstract fun requestPermission (I)V
+	public abstract fun setSystemProperty (Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun shouldShowRequestPermissionRationale ()Z
+	public abstract fun updateFlagsForUid (III)V
+}
+
+public class eu/darken/porter/server/IPorterService$Default : eu/darken/porter/server/IPorterService {
+	public fun <init> ()V
+	public fun addUserService (Leu/darken/porter/server/IPorterServiceConnection;Landroid/os/Bundle;)I
+	public fun asBinder ()Landroid/os/IBinder;
+	public fun attach (Leu/darken/porter/server/IPorterApplication;Landroid/os/Bundle;)Landroid/os/Bundle;
+	public fun attachUserService (Landroid/os/IBinder;Landroid/os/Bundle;)V
+	public fun checkPermission (Ljava/lang/String;)I
+	public fun checkSelfPermission ()Z
+	public fun dispatchPermissionConfirmationResult (IIILandroid/os/Bundle;)V
+	public fun exit ()V
+	public fun getFlagsForUid (II)I
+	public fun getSELinuxContext ()Ljava/lang/String;
+	public fun getSystemProperty (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public fun getUid ()I
+	public fun newProcess ([Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Leu/darken/porter/server/IPorterRemoteProcess;
+	public fun removeUserService (Leu/darken/porter/server/IPorterServiceConnection;Landroid/os/Bundle;)I
+	public fun requestPermission (I)V
+	public fun setSystemProperty (Ljava/lang/String;Ljava/lang/String;)V
+	public fun shouldShowRequestPermissionRationale ()Z
+	public fun updateFlagsForUid (III)V
+}
+
+public abstract class eu/darken/porter/server/IPorterService$Stub : android/os/Binder, eu/darken/porter/server/IPorterService {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public static fun asInterface (Landroid/os/IBinder;)Leu/darken/porter/server/IPorterService;
+	public fun onTransact (ILandroid/os/Parcel;Landroid/os/Parcel;I)Z
+}
+
+public class eu/darken/porter/server/IPorterService$_Parcel {
+	public fun <init> ()V
+}
+
+public abstract interface class eu/darken/porter/server/IPorterServiceConnection : android/os/IInterface {
+	public static final field DESCRIPTOR Ljava/lang/String;
+	public abstract fun connected (Landroid/os/IBinder;)V
+	public abstract fun died ()V
+}
+
+public class eu/darken/porter/server/IPorterServiceConnection$Default : eu/darken/porter/server/IPorterServiceConnection {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public fun connected (Landroid/os/IBinder;)V
+	public fun died ()V
+}
+
+public abstract class eu/darken/porter/server/IPorterServiceConnection$Stub : android/os/Binder, eu/darken/porter/server/IPorterServiceConnection {
+	public fun <init> ()V
+	public fun asBinder ()Landroid/os/IBinder;
+	public static fun asInterface (Landroid/os/IBinder;)Leu/darken/porter/server/IPorterServiceConnection;
+	public fun onTransact (ILandroid/os/Parcel;Landroid/os/Parcel;I)Z
+}
+

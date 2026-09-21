@@ -1,0 +1,11 @@
+public final class eu/darken/porter/sdk/extras/PorterSystemProperties {
+	public static final fun getSystemPropertyBoolean (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;Z)Z
+	public static final fun getSystemPropertyInt (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;I)I
+	public static final fun getSystemPropertyLong (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;J)J
+}
+
+public final class eu/darken/porter/sdk/extras/PorterSystemServices {
+	public static final field INSTANCE Leu/darken/porter/sdk/extras/PorterSystemServices;
+	public final fun getSystemService (Ljava/lang/String;)Landroid/os/IBinder;
+}
+
