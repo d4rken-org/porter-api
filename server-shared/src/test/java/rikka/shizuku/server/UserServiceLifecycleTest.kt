@@ -113,10 +113,18 @@ class UserServiceLifecycleTest {
         ShadowBinder.reset()
     }
 
-    private fun connection(): IShizukuServiceConnection = object : IShizukuServiceConnection.Stub() {
+    private class RecordingConnection : IShizukuServiceConnection.Stub() {
+        @Volatile
+        var deaths = 0
+
         override fun connected(service: IBinder?) {}
-        override fun died() {}
+
+        override fun died() {
+            deaths++
+        }
     }
+
+    private fun connection(): RecordingConnection = RecordingConnection()
 
     private fun options(className: String): Bundle {
         val options = Bundle()
@@ -126,9 +134,9 @@ class UserServiceLifecycleTest {
         return options
     }
 
-    private fun add(className: String): UserServiceRecord {
+    private fun add(className: String, conn: IShizukuServiceConnection = connection()): UserServiceRecord {
         val before = manager.created.size
-        manager.addUserService(connection(), options(className), ShizukuApiConstants.SERVER_VERSION)
+        manager.addUserService(conn, options(className), ShizukuApiConstants.SERVER_VERSION)
         assertEquals(before + 1, manager.created.size)
         return manager.created[manager.created.size - 1]
     }
@@ -284,6 +292,43 @@ class UserServiceLifecycleTest {
         drainCleanup()
 
         assertFalse(record.callbacks.register(LegacyServiceConnection(connection())))
+    }
+
+    @Test
+    fun aStartTimeoutTellsTheCallerTheServiceDied() {
+        val caller = connection()
+        add("ProbeService", caller)
+        val timeout = pendingTimeout.get()
+        assertNotNull(timeout)
+
+        timeout.run()
+        drainCleanup()
+
+        assertEquals(1, caller.deaths)
+    }
+
+    @Test
+    fun aRemovalBeforeAttachTellsTheCallerTheServiceDiedOnce() {
+        val caller = connection()
+        val record = add("ProbeService", caller)
+
+        record.removeSelf()
+        record.removeSelf()
+        drainCleanup()
+
+        assertEquals(1, caller.deaths)
+    }
+
+    @Test
+    fun aRemovalAfterAttachLeavesTheDeathToTheDeliveredBinder() {
+        val caller = connection()
+        val record = add("ProbeService", caller)
+        attach(record, liveBinder(CopyOnWriteArrayList()))
+
+        record.removeSelf()
+        drainCleanup()
+
+        assertEquals(0, caller.deaths)
     }
 
     @Test
