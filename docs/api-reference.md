@@ -14,7 +14,7 @@ lifecycleScope.launch {
 }
 ```
 
-`Porter.availability(context)` says how far away the manager is when nothing is connected: `NOT_INSTALLED`, `INSTALLED_UNRECOGNIZED`, `INSTALLED_NOT_CONNECTED` or `CONNECTED`.
+`Porter.availability(context)` says how far away the manager is when nothing is connected: `NOT_INSTALLED`, `INSTALLED_UNRECOGNIZED`, `INSTALLED_NOT_CONNECTED`, `INCOMPATIBLE` or `CONNECTED`. `INCOMPATIBLE` means a service answered and the two sides share no protocol version; `Porter.incompatibility` carries the version pair, with `serverTooOld` (update Porter) and `clientTooOld` (update this app's SDK). Versions are cumulative, so a newer peer on either side is never a reason by itself.
 
 Every call on a `PorterConnection` goes to the server it was attached to, whichever connection `Porter.connection` holds by then. A connection that was replaced or died answers with `PorterRemoteException` from then on.
 
@@ -81,7 +81,9 @@ Be aware that, to let the service use the latest code, "Run/Debug configurations
 
   The service class must implement `IBinder`; the usual shape is `class MyService : IMyService.Stub()`. It can have a default constructor or one taking a `Context`; the `Context` one is tried first. `userService(args, start = false)` binds only if the service is already running and completes without emitting otherwise. `peekUserService(args)` answers the running service's version code, or null, without binding.
 
-* Stop it: cancelling the collection drops this collector, and when the last collector of the same service identity (`tag`, else class name) goes, the server is asked to drop the binding. The process is **not** killed by that. Implement a "destroy" method under transaction code `16777115` (`16777114` in aidl) that cleans up and calls `System.exit()`, or call `connection.stopUserService(args)` to have the server kill it.
+* Stop it: cancelling the collection drops this collector, and when the last collector of the same service identity (`tag`, else class name) goes, the server is asked to drop the binding. The process is **not** killed by that. Implement a "destroy" method under transaction code `PorterProtocol.USER_SERVICE_TRANSACTION_destroy` (`16777115`, or `16777114` in aidl) that cleans up and calls `System.exit()`, or call `connection.stopUserService(args)` to have the server kill it.
+
+* Per user: the identity is scoped to the calling Android user. A work profile's copy of the app is served by its own process, started with that profile's uid.
 
 ### The use of non-SDK interfaces
 
