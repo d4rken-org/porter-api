@@ -4,6 +4,7 @@ import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_NO_CREATE
 import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_REMOVE
 import eu.darken.porter.sdk.UserServiceTestSupport.args
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
+import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -44,7 +45,7 @@ internal class PorterPeekUserServiceTest {
             "the callback the peek registered is the one it asked the server to drop",
             fake.userServiceConnection!!.asBinder(), fake.removedUserServiceConnection!!.asBinder(),
         )
-        assertNull("nothing is bound under that identity", PorterServiceConnections.peek(args("peeked")))
+        assertNull("nothing is bound under that identity", peek(args("peeked")))
     }
 
     @Test
@@ -56,6 +57,6 @@ internal class PorterPeekUserServiceTest {
 
         assertTrue(fake.userServiceArgs!!.getBoolean(USER_SERVICE_NO_CREATE))
         assertEquals(0, fake.userServiceRemoves)
-        assertNull(PorterServiceConnections.peek(args("absent")))
+        assertNull(peek(args("absent")))
     }
 }

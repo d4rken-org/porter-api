@@ -62,7 +62,7 @@ A user service is like a [bound service](https://developer.android.com/guide/com
 
 Be aware that, to let the service use the latest code, "Run/Debug configurations" - "Always install with package manager" in Android Studio should be checked.
 
-* Start it: `connection.userService(args)` is a cold `Flow<IBinder>`. Collecting binds the service and starts it; the service binder is emitted once the server reports it connected, and the flow completes when the server reports the service died. `UserServiceArgs` is to it what `Intent` is to a bound service:
+* Start it: `connection.userService(args)` is a cold `Flow<IBinder>`. Collecting binds the service and starts it; the service binder is emitted once the server reports it connected, and the flow completes when the server reports the service died, or when the connection it was collected on is replaced or dies. `UserServiceArgs` is to it what `Intent` is to a bound service:
 
   ```kotlin
   val args = UserServiceArgs(
@@ -81,7 +81,7 @@ Be aware that, to let the service use the latest code, "Run/Debug configurations
 
   The service class must implement `IBinder`; the usual shape is `class MyService : IMyService.Stub()`. It can have a default constructor or one taking a `Context`; the `Context` one is tried first. `userService(args, start = false)` binds only if the service is already running and completes without emitting otherwise. `peekUserService(args)` answers the running service's version code, or null, without binding.
 
-* Stop it: cancelling the collection drops this collector, and when the last collector of the same service identity (`tag`, else class name) goes, the server is asked to drop the binding. The process is **not** killed by that. Implement a "destroy" method under transaction code `PorterProtocol.USER_SERVICE_TRANSACTION_destroy` (`16777115`, or `16777114` in aidl) that cleans up and calls `System.exit()`, or call `connection.stopUserService(args)` to have the server kill it.
+* Stop it: cancelling the collection drops this collector, and when the last collector of the same service identity (`tag`, else class name) on the same connection goes, the server is asked to drop the binding. The process is **not** killed by that. Implement a "destroy" method under transaction code `PorterProtocol.USER_SERVICE_TRANSACTION_destroy` (`16777115`, or `16777114` in aidl) that cleans up and calls `System.exit()`, or call `connection.stopUserService(args)` to have the server kill it.
 
 * Per user: the identity is scoped to the calling Android user. A work profile's copy of the app is served by its own process, started with that profile's uid.
 

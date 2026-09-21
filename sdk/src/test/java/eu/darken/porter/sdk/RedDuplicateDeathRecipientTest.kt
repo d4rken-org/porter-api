@@ -5,6 +5,7 @@ import android.os.IBinder
 import eu.darken.porter.sdk.UserServiceTestSupport.args
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
 import eu.darken.porter.sdk.UserServiceTestSupport.idle
+import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -47,7 +48,7 @@ internal class RedDuplicateDeathRecipientTest {
         // The server pushes "connected" for each accepted add while the service is alive, and each
         // push links a recipient of its own to the one binder.
         val first = RecordingCollector(backgroundScope, connection().userService(args))
-        val connection = PorterServiceConnections.peek(args)
+        val connection = peek(args)
         assertNotNull(connection)
         connection!!.connected(binder)
         idle()
@@ -73,7 +74,7 @@ internal class RedDuplicateDeathRecipientTest {
         assertEquals("the first caller was never told its service died", 1, first.disconnects)
         assertEquals("the second caller was never told its service died", 1, second.disconnects)
 
-        val rebound = PorterServiceConnections.peek(args)
+        val rebound = peek(args)
         assertNotNull("the second death signal dropped the binding that arrived after the death", rebound)
         assertNotSame("the later bind was handed back the binding the death retired", connection, rebound)
 

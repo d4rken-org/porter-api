@@ -26,6 +26,9 @@ internal object UserServiceTestSupport {
 
     fun connection(): PorterConnection = Porter.connection.value ?: error("no connection is published")
 
+    /** The published connection's binding for [args], if it holds one. */
+    fun peek(args: UserServiceArgs): PorterServiceConnection? = connection().userServices.peek(args)
+
     fun idle() {
         ShadowLooper.shadowMainLooper().idle()
     }

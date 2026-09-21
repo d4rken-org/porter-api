@@ -4,6 +4,7 @@ import android.os.Binder
 import eu.darken.porter.sdk.UserServiceTestSupport.args
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
 import eu.darken.porter.sdk.UserServiceTestSupport.idle
+import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
@@ -36,7 +37,7 @@ internal class RedUnbindCancelsAQueuedDeathTest {
 
     private fun boundAndConnected(scope: CoroutineScope, args: UserServiceArgs): Pair<RecordingCollector, PorterServiceConnection> {
         val collector = RecordingCollector(scope, connection().userService(args))
-        val connection = PorterServiceConnections.peek(args)
+        val connection = peek(args)
         assertNotNull("the bind left no binding to connect", connection)
         connection!!.connected(Binder())
         idle()
