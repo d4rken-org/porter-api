@@ -15,13 +15,14 @@ import org.robolectric.annotation.Config
 import rikka.shizuku.server.ClientManager
 import rikka.shizuku.server.ConfigManager
 import rikka.shizuku.server.ServerTestSupport
+import rikka.shizuku.server.legacy.LegacyCallerExemption
 import rikka.shizuku.server.UserServiceManager
 import rikka.shizuku.server.util.HandlerUtil
 import rikka.shizuku.server.util.OsUtils
 
 /**
  * Who [PorterCore.enforceCallingPermission] and [PorterCore.enforceManagerPermission]
- * admit, and with which message they refuse everyone else.
+ * admit, on which wire's exemption, and with which message they refuse everyone else.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], manifest = Config.NONE)
@@ -51,27 +52,44 @@ class PorterCoreGateTest {
     }
 
     @Test
-    fun serverUidIsRefusedWithoutARecord() {
-        val e = assertThrows(SecurityException::class.java) {
-            core.enforceCallingPermission("getVersion", CallerIdentity(OsUtils.uid, CLIENT_PID))
+    fun serverUidIsRefusedWithoutARecordOnEitherWire() {
+        val serverUid = CallerIdentity(OsUtils.uid, CLIENT_PID)
+
+        val porter = assertThrows(SecurityException::class.java) {
+            core.enforceCallingPermission("getVersion", serverUid, CallerExemption.None)
+        }
+        val legacy = assertThrows(SecurityException::class.java) {
+            core.enforceCallingPermission("getVersion", serverUid, LegacyCallerExemption)
         }
 
-        assertTrue(e.message, e.message!!.contains("is not an attached client"))
+        assertTrue(porter.message, porter.message!!.contains("is not an attached client"))
+        assertTrue(legacy.message, legacy.message!!.contains("is not an attached client"))
     }
 
-    /** A grant cannot add anything to the server's own identity, so it is not asked for one. */
     @Test
-    fun anAttachedServerUidPassesWithoutAGrant() {
+    fun anAttachedServerUidWithoutAGrantIsRefusedOnThePorterWire() {
         `when`(config.find(OsUtils.uid)).thenReturn(ServerTestSupport.entry(false, false))
         clients.addClient(OsUtils.uid, CLIENT_PID, ServerTestSupport.application(mock(IBinder::class.java)), PACKAGE, 13)
 
-        core.enforceCallingPermission("getVersion", CallerIdentity(OsUtils.uid, CLIENT_PID))
+        val e = assertThrows(SecurityException::class.java) {
+            core.enforceCallingPermission("getVersion", CallerIdentity(OsUtils.uid, CLIENT_PID), CallerExemption.None)
+        }
+
+        assertTrue(e.message, e.message!!.contains("requires permission"))
+    }
+
+    @Test
+    fun anAttachedServerUidWithoutAGrantPassesOnTheLegacyWire() {
+        `when`(config.find(OsUtils.uid)).thenReturn(ServerTestSupport.entry(false, false))
+        clients.addClient(OsUtils.uid, CLIENT_PID, ServerTestSupport.application(mock(IBinder::class.java)), PACKAGE, 13)
+
+        core.enforceCallingPermission("getVersion", CallerIdentity(OsUtils.uid, CLIENT_PID), LegacyCallerExemption)
     }
 
     @Test
     fun unattachedCallerIsRefusedAsNotAttached() {
         val e = assertThrows(SecurityException::class.java) {
-            core.enforceCallingPermission("getVersion", caller)
+            core.enforceCallingPermission("getVersion", caller, CallerExemption.None)
         }
 
         assertTrue(e.message, e.message!!.contains("is not an attached client"))
@@ -83,7 +101,7 @@ class PorterCoreGateTest {
         attach(13)
 
         val e = assertThrows(SecurityException::class.java) {
-            core.enforceCallingPermission("getVersion", caller)
+            core.enforceCallingPermission("getVersion", caller, CallerExemption.None)
         }
 
         assertTrue(e.message, e.message!!.contains("requires permission"))
@@ -94,14 +112,14 @@ class PorterCoreGateTest {
         `when`(config.find(CLIENT_UID)).thenReturn(ServerTestSupport.entry(true, false))
         attach(13)
 
-        core.enforceCallingPermission("getVersion", caller)
+        core.enforceCallingPermission("getVersion", caller, CallerExemption.None)
     }
 
     @Test
     fun overrideAnsweringTrueAdmitsAnUnattachedCaller() {
         policy.callerPermission = true
 
-        core.enforceCallingPermission("transactRemote", caller)
+        core.enforceCallingPermission("transactRemote", caller, CallerExemption.None)
     }
 
     @Test

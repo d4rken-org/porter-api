@@ -26,6 +26,7 @@ import rikka.shizuku.ShizukuApiConstants.BIND_APPLICATION_SHOULD_SHOW_REQUEST_PE
 import rikka.shizuku.ShizukuApiConstants.REQUEST_PERMISSION_REPLY_ALLOWED
 import rikka.shizuku.ShizukuApiConstants.REQUEST_PERMISSION_REPLY_IS_ONETIME
 import rikka.shizuku.server.api.RemoteProcessHolder
+import rikka.shizuku.server.legacy.LegacyCallerExemption
 import rikka.shizuku.server.legacy.LegacyClientCallback
 import rikka.shizuku.server.legacy.LegacyServiceConnection
 import rikka.shizuku.server.legacy.LegacyUserServiceOptions
@@ -48,7 +49,7 @@ open class ShizukuLegacyEndpoint(
     ) {
 
         override fun enforceCallingPermission(func: String) {
-            core.enforceCallingPermission(func, CallerIdentity.fromBinder())
+            core.enforceCallingPermission(func, CallerIdentity.fromBinder(), LegacyCallerExemption)
         }
     }
 
@@ -85,40 +86,40 @@ open class ShizukuLegacyEndpoint(
     }
 
     final override fun getVersion(): Int {
-        core.enforceCallingPermission("getVersion", CallerIdentity.fromBinder())
+        core.enforceCallingPermission("getVersion", CallerIdentity.fromBinder(), LegacyCallerExemption)
         return ShizukuApiConstants.SERVER_VERSION
     }
 
-    final override fun getUid(): Int = core.getUid(CallerIdentity.fromBinder())
+    final override fun getUid(): Int = core.getUid(CallerIdentity.fromBinder(), LegacyCallerExemption)
 
     @Throws(RemoteException::class)
     final override fun checkPermission(permission: String?): Int {
         // The gate answers before any argument is read, so an unauthorized caller is refused for
         // being unauthorized whatever it sent.
         val caller = CallerIdentity.fromBinder()
-        core.enforceCallingPermission("checkPermission", caller)
-        return core.checkPermission(caller, permission ?: throw NullPointerException("permission is null"))
+        core.enforceCallingPermission("checkPermission", caller, LegacyCallerExemption)
+        return core.checkPermission(caller, LegacyCallerExemption, permission ?: throw NullPointerException("permission is null"))
     }
 
-    final override fun getSELinuxContext(): String? = core.getSELinuxContext(CallerIdentity.fromBinder())
+    final override fun getSELinuxContext(): String? = core.getSELinuxContext(CallerIdentity.fromBinder(), LegacyCallerExemption)
 
     final override fun getSystemProperty(name: String?, defaultValue: String?): String? {
         val caller = CallerIdentity.fromBinder()
-        core.enforceCallingPermission("getSystemProperty", caller)
-        return core.getSystemProperty(caller, name ?: throw NullPointerException("name is null"), defaultValue)
+        core.enforceCallingPermission("getSystemProperty", caller, LegacyCallerExemption)
+        return core.getSystemProperty(caller, LegacyCallerExemption, name ?: throw NullPointerException("name is null"), defaultValue)
     }
 
     final override fun setSystemProperty(name: String?, value: String?) {
         val caller = CallerIdentity.fromBinder()
-        core.enforceCallingPermission("setSystemProperty", caller)
-        core.setSystemProperty(caller, name ?: throw NullPointerException("name is null"), value)
+        core.enforceCallingPermission("setSystemProperty", caller, LegacyCallerExemption)
+        core.setSystemProperty(caller, LegacyCallerExemption, name ?: throw NullPointerException("name is null"), value)
     }
 
     final override fun newProcess(cmd: Array<String>?, env: Array<String>?, dir: String?): IRemoteProcess {
         val caller = CallerIdentity.fromBinder()
-        core.enforceCallingPermission("newProcess", caller)
+        core.enforceCallingPermission("newProcess", caller, LegacyCallerExemption)
         return RemoteProcessHolder(
-            core.newServerProcess(caller, cmd ?: throw NullPointerException("cmd is null"), env, dir),
+            core.newServerProcess(caller, LegacyCallerExemption, cmd ?: throw NullPointerException("cmd is null"), env, dir),
         )
     }
 
@@ -126,38 +127,45 @@ open class ShizukuLegacyEndpoint(
         val caller = CallerIdentity.fromBinder()
         // Before any Bundle content is read: an unauthorized caller is refused, never told what
         // their options decoded to.
-        core.enforceCallingPermission("addUserService", caller)
+        core.enforceCallingPermission("addUserService", caller, LegacyCallerExemption)
 
         (conn ?: throw NullPointerException("connection is null"))
         (options ?: throw NullPointerException("options is null"))
 
         return LegacyUserServiceResults.encodeBind(
-            core.addUserService(caller, LegacyServiceConnection(conn), LegacyUserServiceOptions.decodeForBind(options)),
+            core.addUserService(
+                caller,
+                LegacyCallerExemption,
+                LegacyServiceConnection(conn),
+                LegacyUserServiceOptions.decodeForBind(options),
+            ),
             core.legacyApiLevelOf(caller),
         )
     }
 
     final override fun removeUserService(conn: IShizukuServiceConnection?, options: Bundle?): Int {
         val caller = CallerIdentity.fromBinder()
-        core.enforceCallingPermission("removeUserService", caller)
+        core.enforceCallingPermission("removeUserService", caller, LegacyCallerExemption)
 
         return LegacyUserServiceResults.encodeRemove(
             core.removeUserService(
                 caller,
+                LegacyCallerExemption,
                 if (conn == null) null else LegacyServiceConnection(conn),
                 LegacyUserServiceOptions.decodeForRemove(options ?: throw NullPointerException("options is null")),
             ),
         )
     }
 
-    final override fun checkSelfPermission(): Boolean = core.checkSelfPermission(CallerIdentity.fromBinder())
+    final override fun checkSelfPermission(): Boolean =
+        core.checkSelfPermission(CallerIdentity.fromBinder(), LegacyCallerExemption)
 
     final override fun requestPermission(requestCode: Int) {
-        core.requestPermission(CallerIdentity.fromBinder(), requestCode)
+        core.requestPermission(CallerIdentity.fromBinder(), requestCode, LegacyCallerExemption)
     }
 
     final override fun shouldShowRequestPermissionRationale(): Boolean =
-        core.shouldShowRequestPermissionRationale(CallerIdentity.fromBinder())
+        core.shouldShowRequestPermissionRationale(CallerIdentity.fromBinder(), LegacyCallerExemption)
 
     final override fun exit() {
         core.enforceManagerPermission("exit", CallerIdentity.fromBinder())
@@ -212,7 +220,7 @@ open class ShizukuLegacyEndpoint(
         if (code == ShizukuApiConstants.BINDER_TRANSACTION_transact) {
             data.enforceInterface(ShizukuApiConstants.BINDER_DESCRIPTOR)
             val caller = CallerIdentity.fromBinder()
-            core.enforceCallingPermission("transactRemote", caller)
+            core.enforceCallingPermission("transactRemote", caller, LegacyCallerExemption)
             val targetBinder = data.readStrongBinder()
             val targetCode = data.readInt()
             // A recorded v13 client writes the flags into the parcel; anyone else is answered

@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.os.Parcel
 import android.os.RemoteException
 import androidx.annotation.CallSuper
+import eu.darken.porter.core.CallerExemption
 import eu.darken.porter.core.CallerIdentity
 import eu.darken.porter.core.PorterCore
 import eu.darken.porter.core.UserServiceBindResult
@@ -40,7 +41,7 @@ open class PorterEndpoint(private val core: PorterCore<*, *, *>) : IPorterServic
         object : PorshService(PorterProtocol.DESCRIPTOR, PorterProtocol.TRANSACTION_PORSH_BASE) {
 
             override fun enforceCallingPermission(func: String) {
-                core.enforceCallingPermission(func, CallerIdentity.fromBinder())
+                core.enforceCallingPermission(func, CallerIdentity.fromBinder(), CallerExemption.None)
             }
         }
 
@@ -85,42 +86,43 @@ open class PorterEndpoint(private val core: PorterCore<*, *, *>) : IPorterServic
         return reply
     }
 
-    final override fun getUid(): Int = core.getUid(CallerIdentity.fromBinder())
+    final override fun getUid(): Int = core.getUid(CallerIdentity.fromBinder(), CallerExemption.None)
 
     @Throws(RemoteException::class)
     final override fun checkPermission(permission: String?): Int {
         // The gate answers before any argument is read, so an unauthorized caller is refused for
         // being unauthorized whatever it sent.
         val caller = CallerIdentity.fromBinder()
-        core.enforceCallingPermission("checkPermission", caller)
-        return core.checkPermission(caller, permission ?: throw NullPointerException("permission is null"))
+        core.enforceCallingPermission("checkPermission", caller, CallerExemption.None)
+        return core.checkPermission(caller, CallerExemption.None, permission ?: throw NullPointerException("permission is null"))
     }
 
-    final override fun getSELinuxContext(): String? = core.getSELinuxContext(CallerIdentity.fromBinder())
+    final override fun getSELinuxContext(): String? = core.getSELinuxContext(CallerIdentity.fromBinder(), CallerExemption.None)
 
     final override fun getSystemProperty(name: String?, defaultValue: String?): String? {
         val caller = CallerIdentity.fromBinder()
-        core.enforceCallingPermission("getSystemProperty", caller)
-        return core.getSystemProperty(caller, name ?: throw NullPointerException("name is null"), defaultValue)
+        core.enforceCallingPermission("getSystemProperty", caller, CallerExemption.None)
+        return core.getSystemProperty(caller, CallerExemption.None, name ?: throw NullPointerException("name is null"), defaultValue)
     }
 
     final override fun setSystemProperty(name: String?, value: String?) {
         val caller = CallerIdentity.fromBinder()
-        core.enforceCallingPermission("setSystemProperty", caller)
-        core.setSystemProperty(caller, name ?: throw NullPointerException("name is null"), value)
+        core.enforceCallingPermission("setSystemProperty", caller, CallerExemption.None)
+        core.setSystemProperty(caller, CallerExemption.None, name ?: throw NullPointerException("name is null"), value)
     }
 
     final override fun addUserService(conn: IPorterServiceConnection?, args: Bundle?): Int {
         val caller = CallerIdentity.fromBinder()
         // Before any Bundle content is read: an unauthorized caller is refused, never told what
         // their arguments decoded to.
-        core.enforceCallingPermission("addUserService", caller)
+        core.enforceCallingPermission("addUserService", caller, CallerExemption.None)
 
         val connection: IPorterServiceConnection = (conn ?: throw NullPointerException("connection is null"))
         val checkedArgs: Bundle = (args ?: throw NullPointerException("args is null"))
 
         val result = core.addUserService(
             caller,
+            CallerExemption.None,
             PorterServiceConnection(connection),
             PorterUserServiceOptions.decodeForBind(checkedArgs),
         )
@@ -133,7 +135,7 @@ open class PorterEndpoint(private val core: PorterCore<*, *, *>) : IPorterServic
 
     final override fun removeUserService(conn: IPorterServiceConnection?, args: Bundle?): Int {
         val caller = CallerIdentity.fromBinder()
-        core.enforceCallingPermission("removeUserService", caller)
+        core.enforceCallingPermission("removeUserService", caller, CallerExemption.None)
 
         val options = PorterUserServiceOptions.decodeForRemove(args ?: throw NullPointerException("args is null"))
         // Unregistering names the connection to unregister; only a removal can leave it out.
@@ -141,7 +143,12 @@ open class PorterEndpoint(private val core: PorterCore<*, *, *>) : IPorterServic
             throw IllegalArgumentException("connection is null and the service is not being removed")
         }
 
-        val result = core.removeUserService(caller, if (conn == null) null else PorterServiceConnection(conn), options)
+        val result = core.removeUserService(
+            caller,
+            CallerExemption.None,
+            if (conn == null) null else PorterServiceConnection(conn),
+            options,
+        )
         return when (result) {
             UserServiceRemoveResult.Removed -> 0
             UserServiceRemoveResult.NoSuchRecord -> USER_SERVICE_RESULT_NO_SUCH_SERVICE
@@ -149,13 +156,14 @@ open class PorterEndpoint(private val core: PorterCore<*, *, *>) : IPorterServic
     }
 
     final override fun requestPermission(requestCode: Int) {
-        core.requestPermission(CallerIdentity.fromBinder(), requestCode)
+        core.requestPermission(CallerIdentity.fromBinder(), requestCode, CallerExemption.None)
     }
 
-    final override fun checkSelfPermission(): Boolean = core.checkSelfPermission(CallerIdentity.fromBinder())
+    final override fun checkSelfPermission(): Boolean =
+        core.checkSelfPermission(CallerIdentity.fromBinder(), CallerExemption.None)
 
     final override fun shouldShowRequestPermissionRationale(): Boolean =
-        core.shouldShowRequestPermissionRationale(CallerIdentity.fromBinder())
+        core.shouldShowRequestPermissionRationale(CallerIdentity.fromBinder(), CallerExemption.None)
 
     @CallSuper
     @Throws(RemoteException::class)
@@ -163,7 +171,7 @@ open class PorterEndpoint(private val core: PorterCore<*, *, *>) : IPorterServic
         if (code == PorterProtocol.TRANSACTION_transactRemote) {
             data.enforceInterface(PorterProtocol.DESCRIPTOR)
             val caller = CallerIdentity.fromBinder()
-            core.enforceCallingPermission("transactRemote", caller)
+            core.enforceCallingPermission("transactRemote", caller, CallerExemption.None)
             // The Porter client always writes the flags into the parcel, so the outer call's flags
             // never reach the target.
             val targetBinder = data.readStrongBinder()

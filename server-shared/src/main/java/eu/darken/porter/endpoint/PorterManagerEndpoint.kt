@@ -1,6 +1,7 @@
 package eu.darken.porter.endpoint
 
 import android.os.IBinder
+import eu.darken.porter.core.CallerExemption
 import eu.darken.porter.core.CallerIdentity
 import eu.darken.porter.core.ManagerOperations
 import eu.darken.porter.core.PorterCore
@@ -20,7 +21,7 @@ open class PorterManagerEndpoint(
         val caller = CallerIdentity.fromBinder()
         core.enforceManagerPermission("newProcess", caller)
         return PorterRemoteProcessHolder(
-            core.newServerProcess(caller, cmd ?: throw NullPointerException("cmd is null"), env, dir),
+            core.newServerProcess(caller, CallerExemption.None, cmd ?: throw NullPointerException("cmd is null"), env, dir),
         )
     }
 

@@ -19,7 +19,6 @@ import rikka.shizuku.server.ClientRecord
 import rikka.shizuku.server.ConfigManager
 import rikka.shizuku.server.UserServiceManager
 import rikka.shizuku.server.util.Logger
-import rikka.shizuku.server.util.OsUtils
 
 /**
  * Every operation an endpoint answers with, and the managers it answers from. The caller is handed
@@ -39,7 +38,7 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
     val policy: ServerPolicy = (policy ?: throw NullPointerException("policy is null"))
     private val packagesForUid: IntFunction<List<String>> = (packagesForUid ?: throw NullPointerException("package lookup is null"))
 
-    fun enforceCallingPermission(func: String, caller: CallerIdentity) {
+    fun enforceCallingPermission(func: String, caller: CallerIdentity, exemption: CallerExemption) {
         val clientRecord = clientManager.findClient(caller.uid, caller.pid)
 
         if (policy.checkCallerPermission(func, caller, clientRecord)) {
@@ -52,9 +51,7 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
             throw SecurityException(msg)
         }
 
-        // The server's own uid is attached like anyone else, but a grant cannot add anything to
-        // what that identity already is, so it is not asked for one.
-        if (!clientRecord.allowed && caller.uid != OsUtils.uid) {
+        if (!clientRecord.allowed && !exemption.waivesGrant(caller)) {
             val msg = "Permission Denial: " + func + " from pid=" + caller.pid + " requires permission"
             LOGGER.w(msg)
             throw SecurityException(msg)
@@ -162,19 +159,19 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         }
     }
 
-    fun getUid(caller: CallerIdentity): Int {
-        enforceCallingPermission("getUid", caller)
+    fun getUid(caller: CallerIdentity, exemption: CallerExemption): Int {
+        enforceCallingPermission("getUid", caller, exemption)
         return Os.getuid()
     }
 
     @Throws(RemoteException::class)
-    fun checkPermission(caller: CallerIdentity, permission: String): Int {
-        enforceCallingPermission("checkPermission", caller)
+    fun checkPermission(caller: CallerIdentity, exemption: CallerExemption, permission: String): Int {
+        enforceCallingPermission("checkPermission", caller, exemption)
         return PermissionManagerApis.checkPermission(permission, Os.getuid())
     }
 
-    fun getSELinuxContext(caller: CallerIdentity): String? {
-        enforceCallingPermission("getSELinuxContext", caller)
+    fun getSELinuxContext(caller: CallerIdentity, exemption: CallerExemption): String? {
+        enforceCallingPermission("getSELinuxContext", caller, exemption)
 
         try {
             return SELinux.getContext()
@@ -183,8 +180,8 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         }
     }
 
-    fun getSystemProperty(caller: CallerIdentity, name: String, defaultValue: String?): String? {
-        enforceCallingPermission("getSystemProperty", caller)
+    fun getSystemProperty(caller: CallerIdentity, exemption: CallerExemption, name: String, defaultValue: String?): String? {
+        enforceCallingPermission("getSystemProperty", caller, exemption)
 
         try {
             return SystemProperties.get(name, defaultValue)
@@ -194,8 +191,8 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
     }
 
     /** A null [value] clears the property, as the platform reads it. */
-    fun setSystemProperty(caller: CallerIdentity, name: String, value: String?) {
-        enforceCallingPermission("setSystemProperty", caller)
+    fun setSystemProperty(caller: CallerIdentity, exemption: CallerExemption, name: String, value: String?) {
+        enforceCallingPermission("setSystemProperty", caller, exemption)
 
         try {
             SystemProperties.set(name, value)
@@ -204,8 +201,14 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         }
     }
 
-    fun newServerProcess(caller: CallerIdentity, cmd: Array<String>, env: Array<String>?, dir: String?): ServerProcess {
-        enforceCallingPermission("newProcess", caller)
+    fun newServerProcess(
+        caller: CallerIdentity,
+        exemption: CallerExemption,
+        cmd: Array<String>,
+        env: Array<String>?,
+        dir: String?,
+    ): ServerProcess {
+        enforceCallingPermission("newProcess", caller, exemption)
 
         if (Logger.debugEnabled()) {
             LOGGER.d(
@@ -226,8 +229,13 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         return ServerProcess(process, token)
     }
 
-    fun addUserService(caller: CallerIdentity, conn: UserServiceConnection?, options: UserServiceOptions?): UserServiceBindResult {
-        enforceCallingPermission("addUserService", caller)
+    fun addUserService(
+        caller: CallerIdentity,
+        exemption: CallerExemption,
+        conn: UserServiceConnection?,
+        options: UserServiceOptions?,
+    ): UserServiceBindResult {
+        enforceCallingPermission("addUserService", caller, exemption)
 
         val connection: UserServiceConnection = (conn ?: throw NullPointerException("connection is null"))
         val checkedOptions: UserServiceOptions = (options ?: throw NullPointerException("options is null"))
@@ -235,8 +243,13 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         return userServiceManager.addUserService(caller, connection, checkedOptions)
     }
 
-    fun removeUserService(caller: CallerIdentity, conn: UserServiceConnection?, options: UserServiceOptions): UserServiceRemoveResult {
-        enforceCallingPermission("removeUserService", caller)
+    fun removeUserService(
+        caller: CallerIdentity,
+        exemption: CallerExemption,
+        conn: UserServiceConnection?,
+        options: UserServiceOptions,
+    ): UserServiceRemoveResult {
+        enforceCallingPermission("removeUserService", caller, exemption)
 
         return userServiceManager.removeUserService(caller, conn, options)
     }
@@ -246,18 +259,16 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         userServiceManager.attachUserService(binder, token, interfaceDescriptor)
     }
 
-    fun checkSelfPermission(caller: CallerIdentity): Boolean {
-        if (caller.uid == OsUtils.uid || caller.pid == OsUtils.pid) {
+    fun checkSelfPermission(caller: CallerIdentity, exemption: CallerExemption): Boolean {
+        if (exemption.answersWithoutRecord(caller)) {
             return true
         }
 
         return clientManager.requireClient(caller.uid, caller.pid).allowed
     }
 
-    fun requestPermission(caller: CallerIdentity, requestCode: Int) {
-        val userId = caller.userId()
-
-        if (caller.uid == OsUtils.uid || caller.pid == OsUtils.pid) {
+    fun requestPermission(caller: CallerIdentity, requestCode: Int, exemption: CallerExemption) {
+        if (exemption.answersWithoutRecord(caller)) {
             return
         }
 
@@ -274,11 +285,11 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
             return
         }
 
-        policy.showPermissionConfirmation(requestCode, clientRecord, caller, userId)
+        policy.showPermissionConfirmation(requestCode, clientRecord, caller, caller.userId())
     }
 
-    fun shouldShowRequestPermissionRationale(caller: CallerIdentity): Boolean {
-        if (caller.uid == OsUtils.uid || caller.pid == OsUtils.pid) {
+    fun shouldShowRequestPermissionRationale(caller: CallerIdentity, exemption: CallerExemption): Boolean {
+        if (exemption.answersWithoutRecord(caller)) {
             return true
         }
 
