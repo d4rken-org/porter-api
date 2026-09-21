@@ -38,6 +38,7 @@ internal open class FakePorterService : IPorterService.Stub() {
     var userServiceArgs: Bundle? = null
     var userServiceConnection: IPorterServiceConnection? = null
     var removedUserServiceConnection: IPorterServiceConnection? = null
+    @Volatile
     var userServiceRemoves = 0
 
     override fun attach(application: IPorterApplication, args: Bundle): Bundle? {

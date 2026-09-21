@@ -163,6 +163,7 @@ public object Porter {
             session.apply(checkNotNull(reply), pushes)
 
             val superseded: Boolean
+            var previous: PorterConnection? = null
             synchronized(lock) {
                 superseded = latest !== session
                 if (!superseded) {
@@ -170,8 +171,8 @@ public object Porter {
                     // The connection that is handing over stays watched until this one takes over,
                     // and both steps happen under the one lock: a death callback never sees a
                     // connection nobody watches, and an unlink that throws publishes nothing.
-                    val previous = current
-                    if (previous != null && previous !== session) previous.unlink()
+                    previous = current?.takeIf { it !== session }
+                    previous?.unlink()
                     current = session
                     // A published connection names this process's selection rather than only being
                     // constrained by it, so whatever was resolved before it published cannot leave
@@ -180,7 +181,6 @@ public object Porter {
                     // Published under the lock: a death arriving between the two steps would
                     // otherwise publish a connection that had already been torn down.
                     _connection.value = session
-                    previous?.takeIf { it !== session }?.markLost()
                 }
             }
             if (superseded) {
@@ -188,6 +188,8 @@ public object Porter {
                 session.unlink()
                 return
             }
+            // Outside the lock: giving up the previous connection can call its server.
+            previous?.markLost()
 
             Log.i(TAG, "attached, connection ${session.generation}")
         } catch (e: RemoteException) {

@@ -1,16 +1,20 @@
 package eu.darken.porter.sdk
 
 import android.os.Binder
+import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_REMOVE
 import eu.darken.porter.sdk.UserServiceTestSupport.args
+import eu.darken.porter.sdk.UserServiceTestSupport.await
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
 import eu.darken.porter.sdk.UserServiceTestSupport.idle
 import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -95,6 +99,62 @@ internal class PorterUserServiceConnectionScopeTest {
 
         assertTrue("the flow outlived the connection it was collected on", collector.completed)
         assertNull(collector.failure)
+    }
+
+    @Test
+    fun aReplacedServerThatStillRunsIsAskedToDropTheBindingsItHolds() = runTest {
+        val first = ScriptedPorterService()
+        Porter.onBinderReceived(first, UserServiceTestSupport.PACKAGE)
+        val args = args("dropped-on-replacement")
+        RecordingCollector(backgroundScope, connection().userService(args))
+        val registered = first.userServiceConnection!!.asBinder()
+
+        Porter.onBinderReceived(FakePorterService(), UserServiceTestSupport.PACKAGE)
+        idle()
+
+        // The drop runs on a thread of its own, so the app is not held up by the replaced server.
+        await { first.userServiceRemoves == 1 }
+        assertFalse("dropped, not killed", first.userServiceArgs!!.getBoolean(USER_SERVICE_REMOVE))
+        assertSame(registered, first.removedUserServiceConnection!!.asBinder())
+    }
+
+    @Test
+    fun aBindThatReachesTheReplacedServerAfterTheDropIsDroppedOnItsOwn() = runTest {
+        val first = ScriptedPorterService()
+        Porter.onBinderReceived(first, UserServiceTestSupport.PACKAGE)
+        val lost = connection()
+        val args = args("late-bind")
+        // The collector has registered locally and is about to ask the server when the replacement
+        // publishes and drops what the server holds, which is nothing yet.
+        first.duringAdd = { Porter.onBinderReceived(FakePorterService(), UserServiceTestSupport.PACKAGE) }
+
+        val collector = RecordingCollector(backgroundScope, lost.userService(args))
+        idle()
+
+        assertTrue("the late bind's flow was left open", collector.completed)
+        assertNull(collector.failure)
+        // Once for the replacement, which found nothing registered, and once for the bind itself.
+        await { first.userServiceRemoves == 2 }
+        assertSame(
+            "the callback the late bind registered is not the one dropped",
+            first.userServiceConnection!!.asBinder(), first.removedUserServiceConnection!!.asBinder(),
+        )
+    }
+
+    @Test
+    fun aServerThatDiedIsNotAskedToDropAnything() = runTest {
+        val dead = object : FakePorterService() {
+            override fun pingBinder(): Boolean = false
+        }
+        Porter.onBinderReceived(dead, UserServiceTestSupport.PACKAGE)
+        val args = args("dropped-on-death")
+        val collector = RecordingCollector(backgroundScope, connection().userService(args))
+
+        deathRecipientOf(dead).binderDied()
+        idle()
+
+        assertTrue(collector.completed)
+        assertEquals("a dead server was asked to drop a binding", 0, dead.userServiceRemoves)
     }
 
     @Test
