@@ -84,7 +84,7 @@ internal class PorterAttachTest {
         assertSame(sparse, connection.binder)
         assertEquals(-1, connection.uid)
         assertNull(connection.seLinuxContext)
-        assertEquals(PermissionState.Denied(shouldShowRationale = false), connection.checkPermission())
+        assertEquals(PermissionState.Denied(permanentlyDenied = false), connection.checkPermission())
         assertEquals("the grant was asked for, not remembered", 1, sparse.selfPermissionQueries)
     }
 
@@ -125,7 +125,7 @@ internal class PorterAttachTest {
 
         Porter.onBinderReceived(FakePorterService(), PACKAGE)
 
-        assertEquals(PermissionState.Denied(shouldShowRationale = false), current().checkPermission())
+        assertEquals(PermissionState.Denied(permanentlyDenied = false), current().checkPermission())
     }
 
     @Test
@@ -164,8 +164,8 @@ internal class PorterAttachTest {
 
         fake.application!!.dispatchPermissionStateChanged(permissionState(false, true))
 
-        assertEquals(PermissionState.Denied(shouldShowRationale = true), connection.permission.value)
-        assertEquals(PermissionState.Denied(shouldShowRationale = true), connection.checkPermission())
+        assertEquals(PermissionState.Denied(permanentlyDenied = true), connection.permission.value)
+        assertEquals(PermissionState.Denied(permanentlyDenied = true), connection.checkPermission())
     }
 
     @Test
@@ -177,7 +177,7 @@ internal class PorterAttachTest {
         Porter.onBinderReceived(fake, PACKAGE)
 
         val connection = current()
-        assertEquals(PermissionState.Denied(shouldShowRationale = true), connection.checkPermission())
+        assertEquals(PermissionState.Denied(permanentlyDenied = true), connection.checkPermission())
         assertEquals("only the permission keys lose to a push", SERVER_UID, connection.uid)
     }
 
@@ -196,7 +196,7 @@ internal class PorterAttachTest {
         val fake = attached()
         val connection = current()
         fake.application!!.dispatchPermissionStateChanged(permissionState(false, true))
-        assertEquals(PermissionState.Denied(shouldShowRationale = true), connection.checkPermission())
+        assertEquals(PermissionState.Denied(permanentlyDenied = true), connection.checkPermission())
 
         fake.application!!.dispatchPermissionStateChanged(permissionState(true, false))
 

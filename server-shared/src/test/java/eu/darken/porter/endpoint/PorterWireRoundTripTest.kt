@@ -83,7 +83,7 @@ class PorterWireRoundTripTest {
     fun aClientWithoutAGrantIsToldSo() {
         Porter.onBinderReceived(endpoint, PACKAGE)
 
-        assertEquals(PermissionState.Denied(shouldShowRationale = false), connection().checkPermission())
+        assertEquals(PermissionState.Denied(permanentlyDenied = false), connection().checkPermission())
     }
 
     @Test

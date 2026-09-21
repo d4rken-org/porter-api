@@ -67,7 +67,7 @@ public class PorterConnection internal constructor(
     private val pendingRequests = HashMap<Int, CompletableDeferred<Boolean>>()
     private val requestCodes = AtomicInteger()
 
-    private val _permission = MutableStateFlow<PermissionState>(PermissionState.Denied(shouldShowRationale = false))
+    private val _permission = MutableStateFlow<PermissionState>(PermissionState.Denied(permanentlyDenied = false))
 
     /**
      * Whether the server lets this app through: what the attach reply said, then every state the
@@ -180,7 +180,7 @@ public class PorterConnection internal constructor(
     /**
      * The permission state, asking the server where [permission] does not already hold the answer:
      * a grant is answered from what the server last reported, a denial is asked about again, and
-     * the rationale flag is asked for when the state does not already carry it. Whatever the
+     * whether it is permanent is asked for when the state does not already say so. Whatever the
      * server answers lands in [permission].
      *
      * On the Shizuku backend the pushed state is synthesized by the SDK from a server's re-sent
@@ -202,7 +202,7 @@ public class PorterConnection internal constructor(
                 granted = permissionGranted
             }
             if (granted) return PermissionState.Granted
-            if (shouldShowRequestPermissionRationale) return PermissionState.Denied(shouldShowRationale = true)
+            if (shouldShowRequestPermissionRationale) return PermissionState.Denied(permanentlyDenied = true)
             pushes = permissionStateGeneration
         }
         var rationale = wire.shouldShowRequestPermissionRationale()
