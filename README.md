@@ -45,4 +45,4 @@ Follow the [integration guide](https://porter.darken.eu/developers) to request a
 
 ## License
 
-Upstream API code is [MIT](LICENSE) with RikkaW attribution, and `shizuku-compat` ships it unchanged under [the same license](shizuku-compat/LICENSE). The Porter SDK (`protocol`, `sdk`, `sdk-extras`) is [Apache 2.0](sdk/LICENSE), with portions of `sdk` and `sdk-extras` derived from the MIT code.
+Upstream API code is [MIT](LICENSE) with RikkaW attribution; `shizuku-compat` is a Kotlin port of one upstream class under [the same license](shizuku-compat/LICENSE), with the class name and parcel layout unchanged. The Porter SDK (`protocol`, `sdk`, `sdk-extras`) is [Apache 2.0](sdk/LICENSE), with portions of `sdk` and `sdk-extras` derived from the MIT code.

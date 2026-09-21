@@ -41,9 +41,6 @@ dependencies {
     testImplementation project(":aidl")
     testImplementation project(":shared")
     testImplementation project(":shizuku-compat")
-    // Test-only: the manager package and the permission it declares are spelled in
-    // rikka.shizuku.ShizukuProvider, which is where a mistyped copy of them is caught.
-    testImplementation project(":provider")
     testImplementation "junit:junit:4.13.2"
     testImplementation "org.robolectric:robolectric:4.16.1"
     testImplementation "org.mockito:mockito-core:5.14.2"

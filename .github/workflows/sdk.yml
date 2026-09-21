@@ -72,8 +72,6 @@ jobs:
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.0"
       - name: Build and test the shell
         run: ./gradlew -PincludeShell=true :porsh:assembleDebug :porsh:assembleRelease :porsh:testDebugUnitTest :server-shared:assembleRelease :server-shared:testDebugUnitTest
-      - name: Check the extras project set still configures
-        run: ./gradlew -PincludeExtras=true help
       - name: Upload unit test reports
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f #v6.0.0

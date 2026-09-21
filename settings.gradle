@@ -32,15 +32,11 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "porter-api"
-include ":aidl", ":shared", ":api", ":provider", ":shizuku-compat", ":protocol", ":sdk", ":sdk-extras"
+include ":aidl", ":shared", ":shizuku-compat", ":protocol", ":sdk", ":sdk-extras"
 
-def includeExtras = providers.gradleProperty("includeExtras").getOrElse("false").toBoolean()
 def includeShell = providers.gradleProperty("includeShell").getOrElse("false").toBoolean()
 
-if (includeExtras || includeShell) {
+if (includeShell) {
     include ":porsh", ":server-shared"
 }
 
-if (includeExtras) {
-    include ":demo", ":demo-hidden-api-stub"
-}

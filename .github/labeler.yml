@@ -24,8 +24,6 @@
 "c: SDK":
   - changed-files:
       - any-glob-to-any-file:
-          - "api/**"
-          - "provider/**"
           - "sdk/**"
           - "sdk-extras/**"
           - "shizuku-compat/**"
@@ -39,12 +37,6 @@
   - changed-files:
       - any-glob-to-any-file:
           - "porsh/**"
-
-"c: Examples":
-  - changed-files:
-      - any-glob-to-any-file:
-          - "demo/**"
-          - "demo-hidden-api-stub/**"
 
 "Build process":
   # Every *.gradle except manifest.gradle, which carries protocol constants
