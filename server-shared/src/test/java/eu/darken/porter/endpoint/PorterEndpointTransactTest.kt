@@ -56,7 +56,7 @@ class PorterEndpointTransactTest {
         core = ServerTestSupport.newCore(clients, ServerTestSupport.TestUserServiceManager(), config, ServerTestSupport.TestPolicy()) {
             listOf(PACKAGE)
         }
-        endpoint = PorterEndpoint(core, mock(ManagerOperations::class.java))
+        endpoint = PorterEndpoint(core)
 
         ShadowBinder.setCallingUid(CLIENT_UID)
         ShadowBinder.setCallingPid(CLIENT_PID)

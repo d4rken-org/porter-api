@@ -29,6 +29,7 @@ import rikka.shizuku.server.api.RemoteProcessHolder
 import rikka.shizuku.server.legacy.LegacyClientCallback
 import rikka.shizuku.server.legacy.LegacyServiceConnection
 import rikka.shizuku.server.legacy.LegacyUserServiceOptions
+import rikka.shizuku.server.legacy.LegacyUserServiceResults
 import rikka.shizuku.server.util.Logger
 import rikka.shizuku.server.util.OsUtils
 
@@ -130,10 +131,8 @@ open class ShizukuLegacyEndpoint(
         (conn ?: throw NullPointerException("connection is null"))
         (options ?: throw NullPointerException("options is null"))
 
-        return core.addUserService(
-            caller,
-            LegacyServiceConnection(conn),
-            LegacyUserServiceOptions.decodeForBind(options),
+        return LegacyUserServiceResults.encodeBind(
+            core.addUserService(caller, LegacyServiceConnection(conn), LegacyUserServiceOptions.decodeForBind(options)),
             core.legacyApiLevelOf(caller),
         )
     }
@@ -142,10 +141,12 @@ open class ShizukuLegacyEndpoint(
         val caller = CallerIdentity.fromBinder()
         core.enforceCallingPermission("removeUserService", caller)
 
-        return core.removeUserService(
-            caller,
-            if (conn == null) null else LegacyServiceConnection(conn),
-            LegacyUserServiceOptions.decodeForRemove(options ?: throw NullPointerException("options is null")),
+        return LegacyUserServiceResults.encodeRemove(
+            core.removeUserService(
+                caller,
+                if (conn == null) null else LegacyServiceConnection(conn),
+                LegacyUserServiceOptions.decodeForRemove(options ?: throw NullPointerException("options is null")),
+            ),
         )
     }
 
@@ -210,7 +211,15 @@ open class ShizukuLegacyEndpoint(
     override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
         if (code == ShizukuApiConstants.BINDER_TRANSACTION_transact) {
             data.enforceInterface(ShizukuApiConstants.BINDER_DESCRIPTOR)
-            core.transactRemote(CallerIdentity.fromBinder(), data, reply, flags)
+            val caller = CallerIdentity.fromBinder()
+            core.enforceCallingPermission("transactRemote", caller)
+            val targetBinder = data.readStrongBinder()
+            val targetCode = data.readInt()
+            // A recorded v13 client writes the flags into the parcel; anyone else is answered
+            // with the outer call's flags.
+            val record = core.clientManager.findClient(caller.uid, caller.pid)
+            val targetFlags = if (record != null && record.apiVersion >= 13) data.readInt() else flags
+            core.transactRemote(caller, targetBinder, targetCode, targetFlags, data, reply)
             return true
         } else if (code == 14 /* attachApplication <= v12 */) {
             data.enforceInterface(ShizukuApiConstants.BINDER_DESCRIPTOR)

@@ -51,7 +51,20 @@ class PorterCoreGateTest {
     }
 
     @Test
-    fun serverUidPassesWithoutARecord() {
+    fun serverUidIsRefusedWithoutARecord() {
+        val e = assertThrows(SecurityException::class.java) {
+            core.enforceCallingPermission("getVersion", CallerIdentity(OsUtils.uid, CLIENT_PID))
+        }
+
+        assertTrue(e.message, e.message!!.contains("is not an attached client"))
+    }
+
+    /** A grant cannot add anything to the server's own identity, so it is not asked for one. */
+    @Test
+    fun anAttachedServerUidPassesWithoutAGrant() {
+        `when`(config.find(OsUtils.uid)).thenReturn(ServerTestSupport.entry(false, false))
+        clients.addClient(OsUtils.uid, CLIENT_PID, ServerTestSupport.application(mock(IBinder::class.java)), PACKAGE, 13)
+
         core.enforceCallingPermission("getVersion", CallerIdentity(OsUtils.uid, CLIENT_PID))
     }
 

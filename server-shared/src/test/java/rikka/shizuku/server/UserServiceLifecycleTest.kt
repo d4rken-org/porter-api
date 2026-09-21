@@ -257,8 +257,8 @@ class UserServiceLifecycleTest {
         blocked.countDown()
         assertTrue(sentinel.await(5, TimeUnit.SECONDS))
 
-        assertFalse(manager.spawned.contains("$PACKAGE:Victim"))
-        assertTrue(manager.spawned.contains("$PACKAGE:Sentinel"))
+        assertFalse(manager.spawned.contains("$USER_ID:$PACKAGE:Victim"))
+        assertTrue(manager.spawned.contains("$USER_ID:$PACKAGE:Sentinel"))
     }
 
     @Test
@@ -327,6 +327,7 @@ class UserServiceLifecycleTest {
         const val PACKAGE = "eu.darken.porter.probe"
         const val APP_ID = 10123
         const val UID = APP_ID
+        const val USER_ID = 0
         const val DESCRIPTOR = "eu.darken.porter.probe.IProbe"
     }
 }

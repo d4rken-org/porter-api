@@ -40,10 +40,6 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
     private val packagesForUid: IntFunction<List<String>> = (packagesForUid ?: throw NullPointerException("package lookup is null"))
 
     fun enforceCallingPermission(func: String, caller: CallerIdentity) {
-        if (caller.uid == OsUtils.uid) {
-            return
-        }
-
         val clientRecord = clientManager.findClient(caller.uid, caller.pid)
 
         if (policy.checkCallerPermission(func, caller, clientRecord)) {
@@ -56,7 +52,9 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
             throw SecurityException(msg)
         }
 
-        if (!clientRecord.allowed) {
+        // The server's own uid is attached like anyone else, but a grant cannot add anything to
+        // what that identity already is, so it is not asked for one.
+        if (!clientRecord.allowed && caller.uid != OsUtils.uid) {
             val msg = "Permission Denial: " + func + " from pid=" + caller.pid + " requires permission"
             LOGGER.w(msg)
             throw SecurityException(msg)
@@ -113,21 +111,20 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         }
     }
 
+    /**
+     * Forwards one transaction to [targetBinder] as the caller wrote it. The endpoint has already
+     * admitted the caller and read the target, code and flags in its own wire's layout; what is
+     * left in [data] is the payload.
+     */
     @Throws(RemoteException::class)
-    fun transactRemote(caller: CallerIdentity, data: Parcel, reply: Parcel?, flags: Int) {
-        enforceCallingPermission("transactRemote", caller)
-
-        val targetBinder = data.readStrongBinder()
-        val targetCode = data.readInt()
-
-        val clientRecord = clientManager.findClient(caller.uid, caller.pid)
-
-        val targetFlags = if (clientRecord != null && clientRecord.apiVersion >= 13) {
-            data.readInt()
-        } else {
-            flags
-        }
-
+    fun transactRemote(
+        caller: CallerIdentity,
+        targetBinder: IBinder,
+        targetCode: Int,
+        targetFlags: Int,
+        data: Parcel,
+        reply: Parcel?,
+    ) {
         if (Logger.debugEnabled()) {
             // Best effort: a descriptor lookup that fails must not stop the caller's transaction
             // from being forwarded, so diagnostics can never change what a client observes.
@@ -147,8 +144,11 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         }
         try {
             val id = Binder.clearCallingIdentity()
-            targetBinder.transact(targetCode, newData, reply, targetFlags)
-            Binder.restoreCallingIdentity(id)
+            try {
+                targetBinder.transact(targetCode, newData, reply, targetFlags)
+            } finally {
+                Binder.restoreCallingIdentity(id)
+            }
         } finally {
             newData.recycle()
         }
@@ -218,16 +218,16 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         return ServerProcess(process, token)
     }
 
-    fun addUserService(caller: CallerIdentity, conn: UserServiceConnection?, options: UserServiceOptions?, callingApiLevel: Int): Int {
+    fun addUserService(caller: CallerIdentity, conn: UserServiceConnection?, options: UserServiceOptions?): UserServiceBindResult {
         enforceCallingPermission("addUserService", caller)
 
         val connection: UserServiceConnection = (conn ?: throw NullPointerException("connection is null"))
         val checkedOptions: UserServiceOptions = (options ?: throw NullPointerException("options is null"))
 
-        return userServiceManager.addUserService(caller, connection, checkedOptions, callingApiLevel)
+        return userServiceManager.addUserService(caller, connection, checkedOptions)
     }
 
-    fun removeUserService(caller: CallerIdentity, conn: UserServiceConnection?, options: UserServiceOptions): Int {
+    fun removeUserService(caller: CallerIdentity, conn: UserServiceConnection?, options: UserServiceOptions): UserServiceRemoveResult {
         enforceCallingPermission("removeUserService", caller)
 
         return userServiceManager.removeUserService(caller, conn, options)

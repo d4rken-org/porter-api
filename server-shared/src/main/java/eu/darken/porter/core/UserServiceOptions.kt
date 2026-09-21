@@ -26,6 +26,10 @@ class UserServiceOptions(
 
     fun className(): String = component.className
 
-    /** `eu.darken.porter.probe:ProbeService`, or the tag in place of the class name. */
-    fun key(): String = packageName() + ":" + (tag ?: className())
+    /**
+     * `10:eu.darken.porter.probe:ProbeService`, or the tag in place of the class name. The
+     * caller's Android user leads, so each user's installation of a package gets its own service
+     * process, started with that user's uid.
+     */
+    fun key(userId: Int): String = userId.toString() + ":" + packageName() + ":" + (tag ?: className())
 }

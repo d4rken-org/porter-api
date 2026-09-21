@@ -10,6 +10,10 @@ class ClientRecord(
     identity: CallerIdentity,
     val callback: ClientCallback,
     val packageName: String,
+    /**
+     * What the client declared when it attached, on the scale of the wire it attached through:
+     * the Shizuku API level (-1 before v13) or the Porter protocol version.
+     */
     val apiVersion: Int,
 ) {
 
