@@ -1,9 +1,8 @@
-package eu.darken.porter.porsh;
+package eu.darken.porter.porsh
 
-import androidx.test.ext.junit.runners.AndroidJUnit4;
-
-import org.junit.Test;
-import org.junit.runner.RunWith;
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Test
+import org.junit.runner.RunWith
 
 /**
  * Assembling the module never loads the shared object, so a JNI class string that no
@@ -11,14 +10,14 @@ import org.junit.runner.RunWith;
  * either registerNatives fails, and both do a FindClass on their renamed class first, so a
  * load that succeeds proves both strings resolve.
  */
-@RunWith(AndroidJUnit4.class)
-public class PorshNativeLoadTest {
+@RunWith(AndroidJUnit4::class)
+class PorshNativeLoadTest {
 
     @Test
-    public void loadingTheLibrary_registersTheRenamedClasses() {
-        System.loadLibrary("porsh");
+    fun loadingTheLibrary_registersTheRenamedClasses() {
+        System.loadLibrary("porsh")
 
         // Touches no binder; only isatty on this process's own descriptors.
-        PorshTerminal.prepare();
+        PorshTerminal.prepare()
     }
 }
