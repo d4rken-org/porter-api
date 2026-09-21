@@ -4,7 +4,6 @@ import moe.shizuku.server.IShizukuServiceConnection
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import rikka.shizuku.ShizukuApiConstants
-import rikka.shizuku.ShizukuProvider
 
 /**
  * The Shizuku strings are copied by hand, because the modules that declare them are not published.
@@ -29,10 +28,11 @@ internal class ShizukuProtocolConstantsTest {
         assertEquals(ShizukuApiConstants.USER_SERVICE_ARG_TOKEN, ShizukuProtocol.USER_SERVICE_ARG_TOKEN)
     }
 
+    /** The two strings a Shizuku manager is recognized by, as upstream's ShizukuProvider spells them. */
     @Test
-    fun theManagerIdentityIsTheOneTheProviderDeclares() {
-        assertEquals(ShizukuProvider.MANAGER_APPLICATION_ID, ShizukuProtocol.MANAGER_APPLICATION_ID)
-        assertEquals(ShizukuProvider.PERMISSION, ShizukuProtocol.PERMISSION)
+    fun theManagerIdentityIsUpstreamsFixedOne() {
+        assertEquals("moe.shizuku.privileged.api", ShizukuProtocol.MANAGER_APPLICATION_ID)
+        assertEquals("moe.shizuku.manager.permission.API_V23", ShizukuProtocol.PERMISSION)
     }
 
     @Test
