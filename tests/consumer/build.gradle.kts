@@ -32,6 +32,13 @@ android {
     if (withLegacySdk) {
         sourceSets["main"].java.srcDir("src/legacy/java")
     }
+    // Only these two configurations ship moe.shizuku.api.BinderContainer, which the Shizuku
+    // provider refuses to attach without.
+    if (withCompat || withLegacySdk) {
+        for (buildType in listOf("debug", "release")) {
+            sourceSets[buildType].manifest.srcFile("src/shizuku/AndroidManifest.xml")
+        }
+    }
     if (withExtras) {
         sourceSets["main"].java.srcDir("src/extras/java")
     }
