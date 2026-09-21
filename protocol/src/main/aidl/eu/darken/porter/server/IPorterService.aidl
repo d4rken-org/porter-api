@@ -1,9 +1,9 @@
 package eu.darken.porter.server;
 
 import eu.darken.porter.server.IPorterApplication;
-import eu.darken.porter.server.IPorterRemoteProcess;
 import eu.darken.porter.server.IPorterServiceConnection;
 
+// Ids are explicit and never reused: a removed method leaves its number unallocated.
 interface IPorterService {
 
     Bundle attach(in IPorterApplication application, in Bundle args) = 1;
@@ -18,10 +18,6 @@ interface IPorterService {
 
     void setSystemProperty(String name, String value) = 6;
 
-    // Protocol internal, not a cross-backend promise: no method on Porter reaches this, and the
-    // Shizuku wire has no equivalent the SDK exposes. Callers transact on the binder themselves.
-    IPorterRemoteProcess newProcess(in String[] cmd, in String[] env, String dir) = 7;
-
     int addUserService(in IPorterServiceConnection conn, in Bundle args) = 8;
 
     int removeUserService(in IPorterServiceConnection conn, in Bundle args) = 9;
@@ -31,14 +27,4 @@ interface IPorterService {
     boolean checkSelfPermission() = 11;
 
     boolean shouldShowRequestPermissionRationale() = 12;
-
-    void exit() = 13;
-
-    void attachUserService(in IBinder binder, in Bundle args) = 14;
-
-    oneway void dispatchPermissionConfirmationResult(int requestUid, int requestPid, int requestCode, in Bundle data) = 15;
-
-    int getFlagsForUid(int uid, int mask) = 16;
-
-    void updateFlagsForUid(int uid, int mask, int value) = 17;
 }

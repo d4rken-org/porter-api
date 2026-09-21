@@ -32,7 +32,7 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "porter-api"
-include(":aidl", ":shared", ":shizuku-compat", ":protocol", ":sdk", ":sdk-extras")
+include(":aidl", ":shared", ":shizuku-compat", ":protocol", ":manager-protocol", ":sdk", ":sdk-extras")
 
 val includeShell = providers.gradleProperty("includeShell").getOrElse("false").toBoolean()
 
