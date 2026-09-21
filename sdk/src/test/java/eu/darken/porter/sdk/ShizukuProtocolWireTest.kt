@@ -15,8 +15,6 @@ import eu.darken.porter.sdk.ShizukuProtocol.BIND_APPLICATION_SERVER_UID
 import eu.darken.porter.sdk.ShizukuProtocol.BIND_APPLICATION_SERVER_VERSION
 import eu.darken.porter.sdk.ShizukuProtocol.BIND_APPLICATION_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE
 import eu.darken.porter.sdk.ShizukuProtocol.REQUEST_PERMISSION_REPLY_ALLOWED
-import eu.darken.porter.sdk.ShizukuProtocol.REQUEST_PERMISSION_REPLY_IS_ONETIME
-import eu.darken.porter.sdk.ShizukuProtocol.USER_SERVICE_ARG_TOKEN
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -196,7 +194,6 @@ internal class ShizukuProtocolWireTest {
         fake.systemProperty = "answered"
         fake.selfPermission = true
         fake.rationale = true
-        fake.flags = 6
         val wire = ShizukuProtocolWire(fake, callbacks)
 
         assertEquals(SERVER_UID, wire.getUid())
@@ -207,54 +204,14 @@ internal class ShizukuProtocolWireTest {
         wire.requestPermission(REQUEST_CODE)
         assertTrue(wire.checkSelfPermission())
         assertTrue(wire.shouldShowRequestPermissionRationale())
-        wire.exit()
-        assertEquals(6, wire.getFlagsForUid(TARGET_UID, 2))
-        wire.updateFlagsForUid(TARGET_UID, 2, 2)
 
-        assertCodes(fake, 4, 9, 5, 10, 11, 15, 16, 17, 101, 106, 107)
+        assertCodes(fake, 4, 9, 5, 10, 11, 15, 16, 17)
         assertEquals("android.permission.DUMP", fake.checkedPermission)
         assertEquals("ro.asked", fake.queriedPropertyName)
         assertEquals("fallback", fake.queriedPropertyDefault)
         assertEquals("ro.written", fake.setPropertyName)
         assertEquals("value", fake.setPropertyValue)
         assertEquals(REQUEST_CODE, fake.requestedPermissionCode)
-        assertEquals(1, fake.exitCalls)
-        assertEquals(TARGET_UID, fake.flagsUid)
-        assertEquals(2, fake.flagsMask)
-        assertEquals(2, fake.flagsValue)
-    }
-
-    @Test
-    fun attachUserServiceCarriesTheTokenBundle() {
-        val fake = FakeShizukuService()
-        val host: IBinder = Binder()
-
-        ShizukuProtocolWire(fake, callbacks).attachUserService(host, TOKEN)
-
-        assertCodes(fake, 102)
-        assertSame(host, fake.attachedUserServiceBinder)
-        val options = fake.attachedUserServiceOptions
-        assertNotNull(options)
-        assertEquals(TOKEN, options!!.getString(USER_SERVICE_ARG_TOKEN))
-    }
-
-    @Test
-    fun permissionConfirmationIsOneWay() {
-        val fake = FakeShizukuService()
-
-        ShizukuProtocolWire(fake, callbacks)
-            .dispatchPermissionConfirmationResult(TARGET_UID, TARGET_PID, REQUEST_CODE, true, false)
-
-        assertCodes(fake, 105)
-        assertEquals(IBinder.FLAG_ONEWAY, fake.lastTransactFlags)
-        assertFalse(fake.lastTransactExpectedReply)
-        assertEquals(TARGET_UID, fake.confirmationUid)
-        assertEquals(TARGET_PID, fake.confirmationPid)
-        assertEquals(REQUEST_CODE, fake.confirmationRequestCode)
-        val data = fake.confirmationData
-        assertNotNull(data)
-        assertTrue(data!!.getBoolean(REQUEST_PERMISSION_REPLY_ALLOWED))
-        assertFalse(data.getBoolean(REQUEST_PERMISSION_REPLY_IS_ONETIME))
     }
 
     private companion object {

@@ -4,9 +4,8 @@ import android.content.pm.PackageManager
 import android.os.IBinder
 import android.os.Parcel
 import android.util.Log
-import androidx.annotation.RestrictTo
-import androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX
 import eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE
+import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_RESULT_NOT_RUNNING
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
@@ -322,8 +321,11 @@ public class PorterConnection internal constructor(
      * dies.
      *
      * Unbinding does not kill the service: implement a "destroy" method under transaction code
-     * `16777115` (`16777114` in aidl) that cleans up and calls [System.exit], or call
-     * [stopUserService].
+     * [eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TRANSACTION_destroy] (`16777114` in
+     * aidl) that cleans up and calls [System.exit], or call [stopUserService].
+     *
+     * A service is per Android user: a work profile's copy of an app is served by its own process,
+     * started with that profile's uid, whatever the personal profile's copy is running.
      *
      * The service process is not a valid Android application process. A `Context` obtained there
      * cannot register receivers or reach a content resolver.
@@ -347,7 +349,7 @@ public class PorterConnection internal constructor(
             if (registration.inserted) registration.connection.removeListener(listener)
             throw e
         }
-        if (!start && result == NOT_RUNNING) close()
+        if (!start && result == USER_SERVICE_RESULT_NOT_RUNNING) close()
         awaitClose { release(args, registration.connection, listener) }
     }.distinctUntilChanged { old, new -> old === new }
 
@@ -383,50 +385,19 @@ public class PorterConnection internal constructor(
         // a callback nobody reads, and the registration is dropped again as soon as it answered.
         val probe = PorterServiceConnection(args)
         val result = wire.addUserService(probe, args, noCreate = true)
-        if (result != NOT_RUNNING) {
+        if (result != USER_SERVICE_RESULT_NOT_RUNNING) {
             try {
                 wire.removeUserService(probe, args, remove = false)
             } catch (e: RuntimeException) {
                 Log.w(TAG, "could not drop the peek registration: $e")
             }
         }
-        return result.takeIf { it != NOT_RUNNING }
+        return result.takeIf { it != USER_SERVICE_RESULT_NOT_RUNNING }
     }
 
     /** Kills the user service process. Collectors of [userService] see the flow complete. */
     public fun stopUserService(args: UserServiceArgs) {
         wire.removeUserService(null, args, remove = true)
-    }
-
-    // --------------------- non-app ----------------------
-
-    @RestrictTo(LIBRARY_GROUP_PREFIX)
-    public fun exit() {
-        wire.exit()
-    }
-
-    @RestrictTo(LIBRARY_GROUP_PREFIX)
-    public fun attachUserService(binder: IBinder, token: String) {
-        wire.attachUserService(binder, token)
-    }
-
-    @RestrictTo(LIBRARY_GROUP_PREFIX)
-    public fun dispatchPermissionConfirmationResult(
-        requestUid: Int,
-        requestPid: Int,
-        requestCode: Int,
-        allowed: Boolean,
-        onetime: Boolean,
-    ) {
-        wire.dispatchPermissionConfirmationResult(requestUid, requestPid, requestCode, allowed, onetime)
-    }
-
-    @RestrictTo(LIBRARY_GROUP_PREFIX)
-    public fun getFlagsForUid(uid: Int, mask: Int): Int = wire.getFlagsForUid(uid, mask)
-
-    @RestrictTo(LIBRARY_GROUP_PREFIX)
-    public fun updateFlagsForUid(uid: Int, mask: Int, value: Int) {
-        wire.updateFlagsForUid(uid, mask, value)
     }
 
     // --------------------- lifecycle ----------------------
@@ -467,8 +438,5 @@ public class PorterConnection internal constructor(
 
     private companion object {
         const val TAG = "Porter"
-
-        /** What the server answers a no-create bind with when nothing is running. */
-        const val NOT_RUNNING = -1
     }
 }

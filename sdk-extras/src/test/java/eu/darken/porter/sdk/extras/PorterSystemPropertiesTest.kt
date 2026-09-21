@@ -1,8 +1,10 @@
 package eu.darken.porter.sdk.extras
 
 import android.os.Bundle
+import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE
 import eu.darken.porter.protocol.PorterProtocol.REPLY_CAPABILITIES
+import eu.darken.porter.protocol.PorterProtocol.REPLY_MIN_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.REPLY_PERMISSION_GRANTED
 import eu.darken.porter.protocol.PorterProtocol.REPLY_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_SECONTEXT
@@ -32,7 +34,8 @@ internal class PorterSystemPropertiesTest {
 
     private fun attached(): Attached {
         val reply = Bundle()
-        reply.putInt(REPLY_PROTOCOL_VERSION, 1)
+        reply.putInt(REPLY_PROTOCOL_VERSION, PorterProtocol.VERSION)
+        reply.putInt(REPLY_MIN_PROTOCOL_VERSION, PorterProtocol.MIN_VERSION)
         reply.putInt(REPLY_SERVER_UID, 2000)
         reply.putString(REPLY_SERVER_SECONTEXT, "u:r:shell:s0")
         reply.putBoolean(REPLY_PERMISSION_GRANTED, true)

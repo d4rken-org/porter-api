@@ -6,6 +6,7 @@ import eu.darken.porter.protocol.PorterProtocol.ATTACH_PACKAGE_NAME
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE
 import eu.darken.porter.protocol.PorterProtocol.REPLY_CAPABILITIES
+import eu.darken.porter.protocol.PorterProtocol.REPLY_MIN_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.REPLY_PERMISSION_GRANTED
 import eu.darken.porter.protocol.PorterProtocol.REPLY_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_SECONTEXT
@@ -66,21 +67,21 @@ internal class PorterAttachTest {
         assertEquals(SERVER_UID, connection.uid)
         val server = connection.serverInfo
         assertEquals(PorterBackend.PORTER, server.backend)
-        assertEquals(1, server.version)
+        assertEquals(PorterProtocol.VERSION, server.version)
         assertNull("the Porter protocol has no patch level", server.patchVersion)
         assertEquals(CONTEXT, connection.seLinuxContext)
         assertEquals(PermissionState.Granted, connection.checkPermission())
     }
 
     @Test
-    fun aSparseReplyLeavesNoStaleServerState() {
+    fun aReplyWithOnlyTheVersionsLeavesNoStaleServerState() {
         attached()
 
         val sparse = FakePorterService()
         Porter.onBinderReceived(sparse, PACKAGE)
 
         val connection = current()
-        assertEquals(0, connection.serverInfo.version)
+        assertSame(sparse, connection.binder)
         assertEquals(-1, connection.uid)
         assertNull(connection.seLinuxContext)
         assertEquals(PermissionState.Denied(shouldShowRationale = false), connection.checkPermission())
@@ -209,7 +210,8 @@ internal class PorterAttachTest {
         const val SERVER_UID = 2000
 
         fun fullReply(): Bundle = Bundle().apply {
-            putInt(REPLY_PROTOCOL_VERSION, 1)
+            putInt(REPLY_PROTOCOL_VERSION, PorterProtocol.VERSION)
+            putInt(REPLY_MIN_PROTOCOL_VERSION, PorterProtocol.MIN_VERSION)
             putInt(REPLY_SERVER_UID, SERVER_UID)
             putString(REPLY_SERVER_SECONTEXT, CONTEXT)
             putBoolean(REPLY_PERMISSION_GRANTED, true)

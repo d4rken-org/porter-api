@@ -32,11 +32,22 @@ internal interface PorterWire {
         val shouldShowRequestPermissionRationale: Boolean,
         /** The Shizuku patch level, and null on a wire whose server has none. */
         val patchVersion: Int?,
+        /** The oldest client the server accepts, 0 on a wire whose server names none. */
+        val minProtocolVersion: Int = 0,
+        /** True when the server refused this client for its version and created nothing for it. */
+        val unsupported: Boolean = false,
     )
 
     /** @return null if the server answered without a reply at all */
     @Throws(RemoteException::class)
     fun attach(packageName: String): AttachReply?
+
+    /**
+     * Why [reply] cannot be spoken to, or null when it can. A missing reply carries no version
+     * metadata, and that alone is never enough to build a connection on.
+     */
+    fun incompatibility(reply: AttachReply?): PorterIncompatibility? =
+        if (reply == null) PorterIncompatibility(serverVersion = 0, serverMinVersion = 0) else null
 
     /**
      * Told from the death dispatch that the connection this wire speaks over is gone. A wire whose
@@ -81,20 +92,4 @@ internal interface PorterWire {
      * @param remove kill the remote user service; it is not killed otherwise
      */
     fun removeUserService(conn: UserServiceCallback?, args: UserServiceArgs, remove: Boolean): Int
-
-    fun exit()
-
-    fun attachUserService(binder: IBinder, token: String)
-
-    fun dispatchPermissionConfirmationResult(
-        requestUid: Int,
-        requestPid: Int,
-        requestCode: Int,
-        allowed: Boolean,
-        onetime: Boolean,
-    )
-
-    fun getFlagsForUid(uid: Int, mask: Int): Int
-
-    fun updateFlagsForUid(uid: Int, mask: Int, value: Int)
 }

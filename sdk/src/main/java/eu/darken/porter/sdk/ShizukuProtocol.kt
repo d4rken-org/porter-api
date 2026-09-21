@@ -36,11 +36,6 @@ internal object ShizukuProtocol {
     const val TRANSACTION_checkSelfPermission: Int = 16 // 15
     const val TRANSACTION_shouldShowRequestPermissionRationale: Int = 17 // 16
     const val TRANSACTION_attachApplication: Int = 18 // 17
-    const val TRANSACTION_exit: Int = 101 // 100
-    const val TRANSACTION_attachUserService: Int = 102 // 101
-    const val TRANSACTION_dispatchPermissionConfirmationResult: Int = 105 // 104
-    const val TRANSACTION_getFlagsForUid: Int = 106 // 105
-    const val TRANSACTION_updateFlagsForUid: Int = 107 // 106
 
     // Codes on APPLICATION_DESCRIPTOR, which the server transacts on the client.
     const val APPLICATION_TRANSACTION_bindApplication: Int = 2 // 1
@@ -63,9 +58,8 @@ internal object ShizukuProtocol {
     const val BIND_APPLICATION_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE: String =
         "shizuku:attach-reply-should-show-request-permission-rationale"
 
-    // permission result, and the confirmation a manager sends back
+    // permission result
     const val REQUEST_PERMISSION_REPLY_ALLOWED: String = "shizuku:request-permission-reply-allowed"
-    const val REQUEST_PERMISSION_REPLY_IS_ONETIME: String = "shizuku:request-permission-reply-is-onetime"
 
     // user service
     const val USER_SERVICE_ARG_TAG: String = "shizuku:user-service-arg-tag"
@@ -79,5 +73,4 @@ internal object ShizukuProtocol {
 
     /** Spelled without the "-arg-" of the other eight; `ShizukuProtocolConstantsTest` pins it. */
     const val USER_SERVICE_ARG_REMOVE: String = "shizuku:user-service-remove"
-    const val USER_SERVICE_ARG_TOKEN: String = "shizuku:user-service-arg-token"
 }

@@ -19,9 +19,7 @@ import eu.darken.porter.sdk.ShizukuProtocol.BIND_APPLICATION_SERVER_VERSION
 import eu.darken.porter.sdk.ShizukuProtocol.BIND_APPLICATION_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE
 import eu.darken.porter.sdk.ShizukuProtocol.DESCRIPTOR
 import eu.darken.porter.sdk.ShizukuProtocol.REQUEST_PERMISSION_REPLY_ALLOWED
-import eu.darken.porter.sdk.ShizukuProtocol.REQUEST_PERMISSION_REPLY_IS_ONETIME
 import eu.darken.porter.sdk.ShizukuProtocol.SERVICE_CONNECTION_DESCRIPTOR
-import eu.darken.porter.sdk.ShizukuProtocol.USER_SERVICE_ARG_TOKEN
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -320,63 +318,6 @@ internal class ShizukuProtocolWire(
             val connection = ShizukuServiceConnection(callback).asBinder()
             callback.rememberRegisteredBinder(PorterBackend.SHIZUKU, connection)
             return connection
-        }
-    }
-
-    override fun exit() {
-        callVoid(ShizukuProtocol.TRANSACTION_exit, NO_ARGUMENTS)
-    }
-
-    override fun attachUserService(binder: IBinder, token: String) {
-        val options = Bundle().apply { putString(USER_SERVICE_ARG_TOKEN, token) }
-        callVoid(ShizukuProtocol.TRANSACTION_attachUserService) { data ->
-            data.writeStrongBinder(binder)
-            data.writeTypedObject(options, 0)
-        }
-    }
-
-    override fun dispatchPermissionConfirmationResult(
-        requestUid: Int,
-        requestPid: Int,
-        requestCode: Int,
-        allowed: Boolean,
-        onetime: Boolean,
-    ) {
-        val result = Bundle().apply {
-            putBoolean(REQUEST_PERMISSION_REPLY_ALLOWED, allowed)
-            putBoolean(REQUEST_PERMISSION_REPLY_IS_ONETIME, onetime)
-        }
-
-        // One-way: no reply parcel is obtained, and no exception header comes back to read.
-        val data = Parcel.obtain()
-        try {
-            data.writeInterfaceToken(DESCRIPTOR)
-            data.writeInt(requestUid)
-            data.writeInt(requestPid)
-            data.writeInt(requestCode)
-            data.writeTypedObject(result, 0)
-            service.transact(
-                ShizukuProtocol.TRANSACTION_dispatchPermissionConfirmationResult,
-                data, null, IBinder.FLAG_ONEWAY,
-            )
-        } catch (e: RemoteException) {
-            throw PorterRemoteException(e)
-        } finally {
-            data.recycle()
-        }
-    }
-
-    override fun getFlagsForUid(uid: Int, mask: Int): Int =
-        call(ShizukuProtocol.TRANSACTION_getFlagsForUid, { data ->
-            data.writeInt(uid)
-            data.writeInt(mask)
-        }) { it.readInt() }
-
-    override fun updateFlagsForUid(uid: Int, mask: Int, value: Int) {
-        callVoid(ShizukuProtocol.TRANSACTION_updateFlagsForUid) { data ->
-            data.writeInt(uid)
-            data.writeInt(mask)
-            data.writeInt(value)
         }
     }
 
