@@ -27,6 +27,7 @@ public final class eu/darken/porter/sdk/Porter {
 	public static final field INSTANCE Leu/darken/porter/sdk/Porter;
 	public final fun availability (Landroid/content/Context;)Leu/darken/porter/sdk/PorterAvailability;
 	public final fun getConnection ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getIncompatibility ()Leu/darken/porter/sdk/PorterIncompatibility;
 	public final fun onBinderReceived (Landroid/os/IBinder;Ljava/lang/String;)V
 }
 
@@ -51,6 +52,7 @@ public final class eu/darken/porter/sdk/PorterApiProvider$Companion {
 
 public final class eu/darken/porter/sdk/PorterAvailability : java/lang/Enum {
 	public static final field CONNECTED Leu/darken/porter/sdk/PorterAvailability;
+	public static final field INCOMPATIBLE Leu/darken/porter/sdk/PorterAvailability;
 	public static final field INSTALLED_NOT_CONNECTED Leu/darken/porter/sdk/PorterAvailability;
 	public static final field INSTALLED_UNRECOGNIZED Leu/darken/porter/sdk/PorterAvailability;
 	public static final field NOT_INSTALLED Leu/darken/porter/sdk/PorterAvailability;
@@ -81,16 +83,11 @@ public final class eu/darken/porter/sdk/PorterBinderWrapper : android/os/IBinder
 }
 
 public final class eu/darken/porter/sdk/PorterConnection {
-	public static final field NOT_RUNNING I
 	public static final field TAG Ljava/lang/String;
-	public final fun attachUserService (Landroid/os/IBinder;Ljava/lang/String;)V
 	public final fun checkPermission ()Leu/darken/porter/sdk/PermissionState;
 	public final fun checkRemotePermission (Ljava/lang/String;)Z
-	public final fun dispatchPermissionConfirmationResult (IIIZZ)V
-	public final fun exit ()V
 	public final fun getBackend ()Leu/darken/porter/sdk/PorterBackend;
 	public final fun getBinder ()Landroid/os/IBinder;
-	public final fun getFlagsForUid (II)I
 	public final fun getPermission ()Lkotlinx/coroutines/flow/StateFlow;
 	public final fun getSeLinuxContext ()Ljava/lang/String;
 	public final fun getServerInfo ()Leu/darken/porter/sdk/PorterServerInfo;
@@ -104,7 +101,6 @@ public final class eu/darken/porter/sdk/PorterConnection {
 	public final fun stopUserService (Leu/darken/porter/sdk/UserServiceArgs;)V
 	public fun toString ()Ljava/lang/String;
 	public final fun transactRemote (Landroid/os/Parcel;Landroid/os/Parcel;I)V
-	public final fun updateFlagsForUid (III)V
 	public final fun userService (Leu/darken/porter/sdk/UserServiceArgs;Z)Lkotlinx/coroutines/flow/Flow;
 	public static synthetic fun userService$default (Leu/darken/porter/sdk/PorterConnection;Leu/darken/porter/sdk/UserServiceArgs;ZILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
 	public final fun wrap (Landroid/os/IBinder;)Landroid/os/IBinder;
@@ -112,6 +108,18 @@ public final class eu/darken/porter/sdk/PorterConnection {
 
 public final class eu/darken/porter/sdk/PorterConnectionLostException : java/lang/IllegalStateException {
 	public fun <init> ()V
+}
+
+public final class eu/darken/porter/sdk/PorterIncompatibility {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getClientMinVersion ()I
+	public final fun getClientTooOld ()Z
+	public final fun getClientVersion ()I
+	public final fun getServerMinVersion ()I
+	public final fun getServerTooOld ()Z
+	public final fun getServerVersion ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class eu/darken/porter/sdk/PorterRemoteException : java/lang/RuntimeException {
