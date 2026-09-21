@@ -1,104 +1,97 @@
-# Shizuku-compatible API reference
+# API reference
 
-For dependencies, providers and backend selection, follow the [Porter integration guide](https://porter.darken.eu/developers). The method reference and historical upstream changelog below retain the original API names.
+For dependencies, providers and backend selection, follow the [Porter integration guide](https://porter.darken.eu/developers). This page is the Kotlin surface of the `sdk` artifact. The upstream Shizuku changelog below is kept for apps migrating from that SDK and retains the original API names.
 
-### Request permission
+### The connection
 
-Requesting permission is similar to [requesting runtime permissions](https://developer.android.com/training/permissions/requesting).
+`Porter.connection` is a `StateFlow<PorterConnection?>`: null before a binder arrives and after it dies, a new `PorterConnection` whenever a new binder attaches. Between two live servers it goes from the old connection straight to the new one and never through null. A binder arrives again whenever the user restarts the manager while your app is running, so collect rather than read once.
 
-A simple example of requesting permission:
-
-```java
-private void onRequestPermissionsResult(int requestCode, int grantResult) {
-    boolean granted = grantResult == PackageManager.PERMISSION_GRANTED;
-    // Do stuff based on the result and the request code
-}
-
-private final Shizuku.OnRequestPermissionResultListener REQUEST_PERMISSION_RESULT_LISTENER = this::onRequestPermissionsResult;
-
-@Override
-protected void onCreate(Bundle savedInstanceState) {
-    // ...
-    Shizuku.addRequestPermissionResultListener(REQUEST_PERMISSION_RESULT_LISTENER);
-    // ...
-}
-
-@Override
-protected void onDestroy() {
-    // ...
-    Shizuku.removeRequestPermissionResultListener(REQUEST_PERMISSION_RESULT_LISTENER);
-    // ...
-}
-
-private boolean checkPermission(int code) {
-  if (Shizuku.isPreV11()) {
-    // Pre-v11 is unsupported
-    return false;
-  }
-
-  if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
-    // Granted
-    return true;
-  } else if (Shizuku.shouldShowRequestPermissionRationale()) {
-    // Users choose "Deny and don't ask again"
-    return false;
-  } else {
-    // Request the permission
-    Shizuku.requestPermission(code);
-    return false;
-  }
+```kotlin
+lifecycleScope.launch {
+    Porter.connection.collect { connection ->
+        if (connection == null) showNotRunning() else onConnected(connection)
+    }
 }
 ```
 
-### Differents of the privilege betweent ADB and ROOT
+`Porter.availability(context)` says how far away the manager is when nothing is connected: `NOT_INSTALLED`, `INSTALLED_UNRECOGNIZED`, `INSTALLED_NOT_CONNECTED` or `CONNECTED`.
 
-Shizuku can be started with ADB or ROOT, and Sui is a Magisk module, so the privilege could be ADB or ROOT. You can use `Shizuku#getUid()` to check your privilege, for ROOT it returns `0`, for ADB is `2000`.
+Every call on a `PorterConnection` goes to the server it was attached to, whichever connection `Porter.connection` holds by then. A connection that was replaced or died answers with `PorterRemoteException` from then on.
+
+### Request permission
+
+`connection.permission` is a `StateFlow<PermissionState>`, `Granted` or `Denied(shouldShowRationale)`, holding what the attach reply said and every state the server pushed since. `checkPermission()` asks the server again and puts the answer there. `requestPermission()` asks the manager to prompt the user and suspends until the user answers:
+
+```kotlin
+suspend fun ensureAccess(connection: PorterConnection): Boolean {
+    when (val state = connection.checkPermission()) {
+        PermissionState.Granted -> return true
+        is PermissionState.Denied -> if (state.shouldShowRationale) {
+            // The user chose "deny and don't ask again"; a request would be refused silently.
+            return false
+        }
+    }
+    return connection.requestPermission() is PermissionState.Granted
+}
+```
+
+A prompt already shown is not withdrawn by cancelling the call; its late answer is dropped. If the connection is replaced or dies before the user answers, the call fails with `PorterConnectionLostException`.
+
+### Differences of the privilege between ADB and ROOT
+
+Porter can be started with ADB or ROOT, so the privilege could be either. `connection.uid` is `0` for ROOT and `2000` for ADB.
 
 What ADB can do is significantly different from ROOT:
 
-* In the Android world, the privilege is determined by Android permissions. See [AndroidManifest of Shell](https://cs.android.com/android/platform/superproject/+/master:frameworks/base/packages/Shell/AndroidManifest.xml), all the permission granted to Shell (ADB) are listed here. Be aware, the permission changes under different Android versions.
+* In the Android world, the privilege is determined by Android permissions. See [AndroidManifest of Shell](https://cs.android.com/android/platform/superproject/+/master:frameworks/base/packages/Shell/AndroidManifest.xml), all the permissions granted to Shell (ADB) are listed there. Be aware, the permissions change under different Android versions.
 
-* In Linux world, the privilege is determined by Shell's uid, capabilities, SELinux context, etc. For example, Shell (ADB) cannot access other apps' data files `/data/user/0/<package>`.
+* In the Linux world, the privilege is determined by Shell's uid, capabilities, SELinux context, etc. For example, Shell (ADB) cannot access other apps' data files `/data/user/0/<package>`.
 
 ### Remote binder call
 
-This is a relatively simple way, but what you can do is limited to Binder calls. Therefore, this is only suitable for simple applications.
+This is the simpler way, but what you can do is limited to Binder calls, so it suits simple applications. `connection.wrap(binder)` returns an `IBinder` whose every transaction is forwarded through the server:
 
-Shizuku API provides `rikka.shizuku.ShizukuBinderWrapper` class which forward Binder calls to Shizuku service which has ADB or ROOT privilege.
+```kotlin
+val binder = PorterSystemServices.getSystemService("package") ?: return
+val pm = IPackageManager.Stub.asInterface(connection.wrap(binder))
+```
 
-### UserService
+### User service
 
-User Service is like [Bound services](https://developer.android.com/guide/components/bound-services) which allows you to run Java or native codes (through JNI). The difference is that the service runs in a different process and as the identity (Linux UID) of root (UID 0) or shell (UID 2000, if the backend is Shizuku and user starts Shizuku with adb).
+A user service is like a [bound service](https://developer.android.com/guide/components/bound-services) that runs in a different process, as the identity (Linux UID) of root or shell. There are no restrictions on non-SDK APIs there. The process is not a valid Android application process: a `Context` obtained there cannot register receivers or reach a content resolver.
 
-There are no restrictions on non-SDK APIs in the user service process. However, the User Service process is not a valid Android application process. Therefore, even if you can acquire a `Context` instance, many APIs, such as `Context#registerReceiver` and `Context#getContentResolver` will not work. You will need to dig into Android source code to find out how things work.
+Be aware that, to let the service use the latest code, "Run/Debug configurations" - "Always install with package manager" in Android Studio should be checked.
 
-Be aware that, to let the service to use the latest code, "Run/Debug configurations" - "Always install with package manager" in Android Studio should be checked.
+* Start it: `connection.userService(args)` is a cold `Flow<IBinder>`. Collecting binds the service and starts it; the service binder is emitted once the server reports it connected, and the flow completes when the server reports the service died. `UserServiceArgs` is to it what `Intent` is to a bound service:
 
-* Start the User Service
+  ```kotlin
+  val args = UserServiceArgs(
+      componentName = ComponentName(this, MyService::class.java),
+      processNameSuffix = "service",
+      tag = "my-service",   // stable across obfuscation; the class name is used otherwise
+      version = 1,          // bump when the service code changes, so the server recreates it
+  )
+  scope.launch {
+      connection.userService(args).collect { binder ->
+          val service = IMyService.Stub.asInterface(binder)
+          // ...
+      }
+  }
+  ```
 
-  Use `bindUserService` method. This method has two parameters, `UserServiceArgs` and `ServiceConnection`.
+  The service class must implement `IBinder`; the usual shape is `class MyService : IMyService.Stub()`. It can have a default constructor or one taking a `Context`; the `Context` one is tried first. `userService(args, start = false)` binds only if the service is already running and completes without emitting otherwise. `peekUserService(args)` answers the running service's version code, or null, without binding.
 
-  `UserServiceArgs` is like `Intent` in Bound services, which decides which service will be started and some options.
-
-  `ServiceConnection` is same as Bound services, but only `onServiceConnected` and `onServiceDisconnected` are used.
-
-  Unlike Bound service, the service class must implement `IBinder` interface. The usual usage is `public class YourService extends IYouAidlInterface.Stub`.
-
-  The service class can have two constructors, one is default constructor, another is with `Context` parameter available from Shizuku v13. Shizuku v13 will try the constructor with `Context` parameter first. Older Shizuku will always use the default constructor. Beaware that the `Context` does not work as same as `Context` in normal Android application. See "Use Android APIs in user service" below.
-
-  Shizuku uses `tag` from `UserServiceArgs` to determine if the User Service is same. If `tag` is not set, class name will be uses, but class name is unstable after ProGuard/R8. If `version` from `UserServiceArgs` mismatches, a new User Service will be start and "destroy" method (see below) will be called for the old.
-
-* Stop the User Service
-
-  Use `unbindUserService` method. However, the user service process will **NOT** be killed automatically. You need to implement a "destroy" method in your service. The transaction code for that method is `16777115` (use `16777114` in aidl). In this method, you can do some cleanup jobs and call `System.exit()` in the end.
+* Stop it: cancelling the collection drops this collector, and when the last collector of the same service identity (`tag`, else class name) goes, the server is asked to drop the binding. The process is **not** killed by that. Implement a "destroy" method under transaction code `16777115` (`16777114` in aidl) that cleans up and calls `System.exit()`, or call `connection.stopUserService(args)` to have the server kill it.
 
 ### The use of non-SDK interfaces
 
-For "Remote binder call", as the APIs are accessed from the app's process, you may need to use [AndroidHiddenApiBypass](https://github.com/LSPosed/AndroidHiddenApiBypass) or any ways you want to bypass restrictions on non-SDK interfaces.
+For "Remote binder call", as the APIs are accessed from the app's process, you may need [AndroidHiddenApiBypass](https://github.com/LSPosed/AndroidHiddenApiBypass) or another way to bypass restrictions on non-SDK interfaces.
 
-We also provides [HiddenApiRefinePlugin](https://github.com/RikkaApps/HiddenApiRefinePlugin) to help you to programing with hidden APIs conveniently.
+[HiddenApiRefinePlugin](https://github.com/RikkaApps/HiddenApiRefinePlugin) helps with programming against hidden APIs conveniently.
 
-## Changelog
+## Upstream Shizuku-API history
+
+Kept for apps migrating from `dev.rikka.shizuku:api`; the names below are that SDK's.
 
 ### 13.1.5
 
