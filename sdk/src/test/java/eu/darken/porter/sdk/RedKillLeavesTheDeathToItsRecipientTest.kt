@@ -5,6 +5,7 @@ import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_REMOVE
 import eu.darken.porter.sdk.UserServiceTestSupport.args
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
 import eu.darken.porter.sdk.UserServiceTestSupport.idle
+import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -29,7 +30,7 @@ internal class RedKillLeavesTheDeathToItsRecipientTest {
 
     private fun boundAndConnected(scope: CoroutineScope, args: UserServiceArgs): Pair<RecordingCollector, PorterServiceConnection> {
         val collector = RecordingCollector(scope, connection().userService(args))
-        val connection = PorterServiceConnections.peek(args)
+        val connection = peek(args)
         assertNotNull(connection)
         connection!!.connected(Binder())
         idle()
@@ -49,7 +50,7 @@ internal class RedKillLeavesTheDeathToItsRecipientTest {
         assertNotNull(fake.userServiceArgs)
         assertTrue("the kill never reached the server", fake.userServiceArgs!!.getBoolean(USER_SERVICE_REMOVE))
 
-        val afterKill = PorterServiceConnections.peek(args)
+        val afterKill = peek(args)
         assertNotNull("the kill tore down the registration the death still has to reach", afterKill)
 
         // The killed process exits and its binder dies, which is what actually ends the binding.
@@ -69,7 +70,7 @@ internal class RedKillLeavesTheDeathToItsRecipientTest {
         fake.removeFailure = RuntimeException("the server refused")
         assertThrows(RuntimeException::class.java) { connection().stopUserService(args) }
 
-        val afterRefusal = PorterServiceConnections.peek(args)
+        val afterRefusal = peek(args)
         assertNotNull("a refused kill dropped the registrations of a service that is still running", afterRefusal)
         assertEquals("a refused kill disconnected a caller whose service is still running", 0, collector.disconnects)
 

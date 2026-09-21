@@ -5,6 +5,7 @@ import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_REMOVE
 import eu.darken.porter.sdk.UserServiceTestSupport.args
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
 import eu.darken.porter.sdk.UserServiceTestSupport.idle
+import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -36,7 +37,7 @@ internal class PorterUserServiceFacadeTest {
 
     /** What the server would push once the binding exists, delivered to whoever is registered. */
     private fun pushConnected(args: UserServiceArgs) {
-        val connection = PorterServiceConnections.peek(args)
+        val connection = peek(args)
         assertNotNull(connection)
         connection!!.connected(Binder())
         idle()
@@ -83,7 +84,7 @@ internal class PorterUserServiceFacadeTest {
         fake.removeFailure = RuntimeException("the server refused")
         conn.job.cancelAndJoin()
 
-        assertNull(PorterServiceConnections.peek(args))
+        assertNull(peek(args))
         assertNull("a refused removal escaped the cancellation", conn.failure)
     }
 
@@ -95,7 +96,7 @@ internal class PorterUserServiceFacadeTest {
 
         connection().stopUserService(args)
 
-        assertNotNull(PorterServiceConnections.peek(args))
+        assertNotNull(peek(args))
         assertNotNull(fake.userServiceArgs)
         assertTrue(fake.userServiceArgs!!.getBoolean(USER_SERVICE_REMOVE))
     }
@@ -108,7 +109,7 @@ internal class PorterUserServiceFacadeTest {
         pushConnected(args)
         assertEquals(1, first.connects)
 
-        val connection = PorterServiceConnections.peek(args)
+        val connection = peek(args)
         assertNotNull(connection)
         connection!!.died()
         val second = RecordingCollector(backgroundScope, connection().userService(args))
@@ -116,7 +117,7 @@ internal class PorterUserServiceFacadeTest {
 
         assertEquals(1, first.disconnects)
         assertEquals(0, second.disconnects)
-        assertNotNull(PorterServiceConnections.peek(args))
-        assertNotSame(connection, PorterServiceConnections.peek(args))
+        assertNotNull(peek(args))
+        assertNotSame(connection, peek(args))
     }
 }

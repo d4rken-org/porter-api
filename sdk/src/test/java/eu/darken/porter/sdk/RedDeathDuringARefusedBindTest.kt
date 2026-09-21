@@ -4,6 +4,7 @@ import android.os.Binder
 import eu.darken.porter.sdk.UserServiceTestSupport.args
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
 import eu.darken.porter.sdk.UserServiceTestSupport.idle
+import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -31,7 +32,7 @@ internal class RedDeathDuringARefusedBindTest {
         val args = args("death-during-refused-bind")
 
         val live = RecordingCollector(backgroundScope, connection().userService(args))
-        val connection = PorterServiceConnections.peek(args)
+        val connection = peek(args)
         assertNotNull(connection)
         connection!!.connected(Binder())
         idle()
@@ -47,6 +48,6 @@ internal class RedDeathDuringARefusedBindTest {
         idle()
 
         assertEquals("the live caller was never told its service died", 1, live.disconnects)
-        assertNull("the dead binding was left in the cache for the next bind to reuse", PorterServiceConnections.peek(args))
+        assertNull("the dead binding was left in the cache for the next bind to reuse", peek(args))
     }
 }

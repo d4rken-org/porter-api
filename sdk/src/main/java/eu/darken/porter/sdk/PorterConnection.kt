@@ -264,7 +264,10 @@ public class PorterConnection internal constructor(
         }
     }
 
-    /** Fails everything still waiting on this connection; it will not be answered any more. */
+    /**
+     * Fails everything still waiting on this connection and ends its user service flows; it will
+     * not be answered any more.
+     */
     internal fun markLost() {
         val waiting = synchronized(permissionLock) {
             lost = true
@@ -273,6 +276,7 @@ public class PorterConnection internal constructor(
             waiting
         }
         for (request in waiting) request.completeExceptionally(PorterConnectionLostException())
+        userServices.close()
     }
 
     // --------------------- calls on the server ----------------------
@@ -308,20 +312,26 @@ public class PorterConnection internal constructor(
 
     // --------------------- user services ----------------------
 
+    /** The bindings this connection holds; ended with it, see [markLost]. */
+    internal val userServices = PorterServiceConnections()
+
     /**
      * A user service is a bound service that runs in its own process, as the identity the server
      * runs as.
      *
      * Collecting binds the service, and starts it unless [start] is false. The service binder is
      * emitted once the server reports it connected, and again if the server reports it connected
-     * again with a different binder; the flow completes when the server reports the service died.
-     * With [start] false and no running service, the flow completes without emitting.
+     * again with a different binder; the flow completes when the server reports the service died,
+     * and when this connection is replaced or dies, whether or not the service is still running.
+     * With [start] false and no running service, the flow completes without emitting. A flow
+     * started on a connection that is already replaced or dead completes at once.
      *
      * Bindings are shared by the service identity, which is [UserServiceArgs.tag] where one is set
-     * and the service class name otherwise. Cancelling the collection drops this collector; when
-     * the last collector of that identity goes, the server is asked to drop the binding without
-     * killing the service. A Shizuku server below 13.4 is not asked, and keeps it until the service
-     * dies.
+     * and the service class name otherwise, among the collectors of this connection: the same
+     * identity collected on another connection is another binding, on that connection's server.
+     * Cancelling the collection drops this collector; when the last collector of that identity
+     * goes, the server is asked to drop the binding without killing the service. A Shizuku server
+     * below 13.4 is not asked, and keeps it until the service dies.
      *
      * Unbinding does not kill the service: implement a "destroy" method under transaction code
      * [eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TRANSACTION_destroy] (`16777114` in
@@ -343,7 +353,11 @@ public class PorterConnection internal constructor(
                 close()
             }
         }
-        val registration = PorterServiceConnections.register(args, listener)
+        val registration = userServices.register(args, listener)
+        if (registration == null) {
+            close()
+            return@callbackFlow
+        }
         val result = try {
             wire.addUserService(registration.connection, args, noCreate = !start)
         } catch (e: RuntimeException) {
@@ -362,11 +376,11 @@ public class PorterConnection internal constructor(
      * either joins before the count reaches zero or finds a fresh entry after the eviction.
      */
     private fun release(args: UserServiceArgs, connection: PorterServiceConnection, listener: UserServiceListener) {
-        val last = synchronized(PorterServiceConnections.LOCK) {
+        val last = synchronized(userServices.lock) {
             connection.removeListener(listener)
             // A dead binding was retired by its death and has nothing left on the server to drop.
             val last = !connection.isTerminal() && !connection.hasListeners()
-            if (last) PorterServiceConnections.remove(connection)
+            if (last) userServices.remove(connection)
             last
         }
         if (!last) return
@@ -386,7 +400,7 @@ public class PorterConnection internal constructor(
     public fun peekUserService(args: UserServiceArgs): Int? {
         // Outside the registry: nothing collects through it, so a running service's push lands on
         // a callback nobody reads, and the registration is dropped again as soon as it answered.
-        val probe = PorterServiceConnection(args)
+        val probe = PorterServiceConnection(userServices, args)
         val result = wire.addUserService(probe, args, noCreate = true)
         if (result != USER_SERVICE_RESULT_NOT_RUNNING) {
             try {

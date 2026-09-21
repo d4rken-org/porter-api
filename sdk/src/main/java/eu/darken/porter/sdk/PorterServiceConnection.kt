@@ -7,9 +7,12 @@ import android.os.Looper
 import android.os.RemoteException
 import java.util.EnumMap
 
-internal class PorterServiceConnection(args: UserServiceArgs) : UserServiceCallback {
+internal class PorterServiceConnection(
+    private val registry: PorterServiceConnections,
+    args: UserServiceArgs,
+) : UserServiceCallback {
 
-    /** Guarded by [PorterServiceConnections.LOCK]. */
+    /** Guarded by [PorterServiceConnections.lock]. */
     private val listeners = HashSet<UserServiceListener>()
 
     /** Guarded by this instance, which is also what a wire locks while it registers one. */
@@ -26,24 +29,24 @@ internal class PorterServiceConnection(args: UserServiceArgs) : UserServiceCallb
     private var pendingDelivery: List<UserServiceListener>? = null
 
     /** @return whether [listener] was inserted, so a refused call can remove what it added */
-    fun addListener(listener: UserServiceListener?): Boolean = synchronized(PorterServiceConnections.LOCK) {
+    fun addListener(listener: UserServiceListener?): Boolean = synchronized(registry.lock) {
         listener != null && listeners.add(listener)
     }
 
     fun removeListener(listener: UserServiceListener?) {
-        synchronized(PorterServiceConnections.LOCK) {
+        synchronized(registry.lock) {
             if (listener != null) listeners.remove(listener)
         }
     }
 
-    /** Whether anyone is still registered here. The caller holds [PorterServiceConnections.LOCK]. */
+    /** Whether anyone is still registered here. The caller holds [PorterServiceConnections.lock]. */
     fun hasListeners(): Boolean = listeners.isNotEmpty()
 
-    /** Whether the binder this was bound to has died. The caller holds [PorterServiceConnections.LOCK]. */
+    /** Whether the binder this was bound to has died. The caller holds [PorterServiceConnections.lock]. */
     fun isTerminal(): Boolean = terminal
 
     fun clearListeners() {
-        synchronized(PorterServiceConnections.LOCK) {
+        synchronized(registry.lock) {
             listeners.clear()
         }
     }
@@ -59,14 +62,14 @@ internal class PorterServiceConnection(args: UserServiceArgs) : UserServiceCallb
     }
 
     override fun connected(binder: IBinder) {
-        synchronized(PorterServiceConnections.LOCK) {
+        synchronized(registry.lock) {
             // Nothing is registered here any more and nothing can be, so holding the binder and
             // linking a recipient would only keep both alive for a delivery that cannot happen.
             if (terminal) return
         }
 
         MAIN_HANDLER.post {
-            val snapshot = synchronized(PorterServiceConnections.LOCK) { listeners.toList() }
+            val snapshot = synchronized(registry.lock) { listeners.toList() }
             for (listener in snapshot) {
                 listener.onConnected(componentName, binder)
             }
@@ -84,7 +87,7 @@ internal class PorterServiceConnection(args: UserServiceArgs) : UserServiceCallb
 
     /** Calls off a delivery that has not run yet, for a caller that no longer wants the binding. */
     fun cancelPendingDelivery() {
-        synchronized(PorterServiceConnections.LOCK) {
+        synchronized(registry.lock) {
             pendingDelivery = null
         }
     }
@@ -92,22 +95,22 @@ internal class PorterServiceConnection(args: UserServiceArgs) : UserServiceCallb
     override fun died() {
         binder = null
 
-        synchronized(PorterServiceConnections.LOCK) {
+        synchronized(registry.lock) {
             // One binder carries a recipient per "connected" push, so its death arrives repeatedly.
             if (terminal) return
             terminal = true
             pendingDelivery = listeners.toList()
             listeners.clear()
-            PorterServiceConnections.retire(this)
+            registry.retire(this)
 
             // Queued while the eviction is still private to this thread: a rebind has to take this
             // same lock to register, so its "connected" cannot reach the queue ahead of this
             // disconnect. Posting is not executing, the body runs later and outside the lock.
             MAIN_HANDLER.post {
-                val snapshot = synchronized(PorterServiceConnections.LOCK) {
+                val snapshot = synchronized(registry.lock) {
                     val delivery = pendingDelivery
                     pendingDelivery = null
-                    PorterServiceConnections.deliveryDone(this)
+                    registry.deliveryDone(this)
                     delivery
                 } ?: return@post
 

@@ -5,6 +5,7 @@ import eu.darken.porter.sdk.UserServiceTestSupport.args
 import eu.darken.porter.sdk.UserServiceTestSupport.await
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
 import eu.darken.porter.sdk.UserServiceTestSupport.idle
+import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -47,7 +48,7 @@ internal class RedDeathRewoundByARefusedBindTest {
 
         val first = RecordingCollector(backgroundScope, connection().userService(args))
         val rebinder = RecordingCollector(backgroundScope, connection().userService(args))
-        val connection = PorterServiceConnections.peek(args)
+        val connection = peek(args)
         assertNotNull(connection)
         connection!!.connected(Binder())
         idle()
@@ -73,7 +74,7 @@ internal class RedDeathRewoundByARefusedBindTest {
         assertEquals("the rebinder's first collection was never told about the death", 1, rebinder.disconnects)
         assertEquals("the refused caller was told about a binding it never had", 0, refused.disconnects)
 
-        val reboundConnection = PorterServiceConnections.peek(args)
+        val reboundConnection = peek(args)
         assertNotNull("the refused bind's rollback dropped the successful rebind's binding", reboundConnection)
         assertNotSame("the rebind was handed back the binding the death retired", connection, reboundConnection)
 

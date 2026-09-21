@@ -4,6 +4,7 @@ import android.os.Binder
 import eu.darken.porter.sdk.UserServiceTestSupport.args
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
 import eu.darken.porter.sdk.UserServiceTestSupport.idle
+import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -30,7 +31,7 @@ internal class RedDeathDeliveredToASameConnectionRebindTest {
         val args = args("death-then-same-connection-rebind")
 
         val first = RecordingCollector(backgroundScope, connection().userService(args))
-        val connection = PorterServiceConnections.peek(args)
+        val connection = peek(args)
         assertNotNull(connection)
         connection!!.connected(Binder())
         idle()
@@ -45,7 +46,7 @@ internal class RedDeathDeliveredToASameConnectionRebindTest {
 
         assertEquals("the caller was never told the binder it was connected to died", 1, first.disconnects)
 
-        val rebound = PorterServiceConnections.peek(args)
+        val rebound = peek(args)
         assertNotNull("the rebind was left without a binding", rebound)
         assertNotSame("the rebind was handed back the binding the death retired", connection, rebound)
 

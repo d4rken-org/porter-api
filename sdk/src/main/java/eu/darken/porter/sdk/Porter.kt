@@ -422,6 +422,5 @@ public object Porter {
             _connection.value = null
         }
         ShizukuCompat.setPresentForTest(null)
-        PorterServiceConnections.clearForTest()
     }
 }
