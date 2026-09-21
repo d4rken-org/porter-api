@@ -84,14 +84,24 @@ public class PorterConnection internal constructor(
     private inner class SessionCallbacks : PorterWire.Callbacks {
 
         override fun onRequestPermissionResult(requestCode: Int, allowed: Boolean) {
-            val waiting = synchronized(permissionLock) {
-                if (lost) null else pendingRequests.remove(requestCode)
-            } ?: return
             // A result belongs to the connection that asked for it, and only while that connection
             // is the one Porter answers for: a replacement can have published between this
             // connection sending the request and its server answering, ahead of it being marked
             // lost.
-            if (Porter.isCurrent(this@PorterConnection)) {
+            val current = Porter.isCurrent(this@PorterConnection)
+            val waiting = synchronized(permissionLock) {
+                val waiting = (if (lost) null else pendingRequests.remove(requestCode)) ?: return
+                // Applied here rather than when the caller resumes: a state push that lands in
+                // between is newer than this result, and the caller may resume after it.
+                if (current) {
+                    permissionGranted = allowed
+                    if (allowed) shouldShowRequestPermissionRationale = false
+                    permissionStateGeneration++
+                    publishPermission()
+                }
+                waiting
+            }
+            if (current) {
                 waiting.complete(allowed)
             } else {
                 waiting.completeExceptionally(PorterConnectionLostException())
@@ -218,8 +228,9 @@ public class PorterConnection internal constructor(
     }
 
     /**
-     * Asks the manager to prompt the user, and suspends until the user answers. The answer also
-     * lands in [permission].
+     * Asks the manager to prompt the user, and suspends until the user answers. The answer lands in
+     * [permission] as it arrives, and what is returned is that state once this call resumes: a
+     * state the server pushed after the answer is newer and wins.
      *
      * A prompt already shown is not withdrawn by cancelling this call; its late answer is dropped.
      *
@@ -236,16 +247,8 @@ public class PorterConnection internal constructor(
         try {
             wire.requestPermission(requestCode)
             val allowed = answer.await()
-            if (allowed) {
-                synchronized(permissionLock) {
-                    permissionGranted = true
-                    shouldShowRequestPermissionRationale = false
-                    permissionStateGeneration++
-                    publishPermission()
-                }
-                return PermissionState.Granted
-            }
-            // The result names no rationale flag, so the server is asked for it.
+            if (allowed) return synchronized(permissionLock) { _permission.value }
+            // A denial names no rationale flag, so the server is asked for it.
             val pushes = permissionPushes()
             val rationale = wire.shouldShowRequestPermissionRationale()
             synchronized(permissionLock) {
