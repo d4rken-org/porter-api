@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+    <application>
+        <meta-data android:name="moe.shizuku.client.V3_SUPPORT" android:value="true" />
+        <!-- Declared so R8 keeps it: without a manifest component nothing reaches
+             ShizukuProtocolDelivery and the consumer-rules.pro rule under test is never used. -->
+        <provider
+            android:name="eu.darken.porter.sdk.PorterShizukuApiProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    </application>
+</manifest>
