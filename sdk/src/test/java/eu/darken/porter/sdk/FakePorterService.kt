@@ -2,16 +2,23 @@ package eu.darken.porter.sdk
 
 import android.content.pm.PackageManager
 import android.os.Bundle
-import android.os.IBinder
+import eu.darken.porter.protocol.PorterProtocol
+import eu.darken.porter.protocol.PorterProtocol.REPLY_MIN_PROTOCOL_VERSION
+import eu.darken.porter.protocol.PorterProtocol.REPLY_PROTOCOL_VERSION
 import eu.darken.porter.server.IPorterApplication
-import eu.darken.porter.server.IPorterRemoteProcess
 import eu.darken.porter.server.IPorterService
 import eu.darken.porter.server.IPorterServiceConnection
 
 /** A local stub standing in for the server: records what it was asked and answers what it was told. */
 internal open class FakePorterService : IPorterService.Stub() {
 
+    /** The keys beyond the two versions; a test that wants no version at all clears those below. */
     var attachReply: Bundle = Bundle()
+
+    /** What the reply says the server speaks and accepts; null leaves the key out. */
+    var protocolVersion: Int? = PorterProtocol.VERSION
+    var minProtocolVersion: Int? = PorterProtocol.MIN_VERSION
+
     var attachFailure: RuntimeException? = null
     var attachCount = 0
     var attachArgs: Bundle? = null
@@ -33,25 +40,16 @@ internal open class FakePorterService : IPorterService.Stub() {
     var removedUserServiceConnection: IPorterServiceConnection? = null
     var userServiceRemoves = 0
 
-    var exitCalls = 0
-    var attachedUserServiceBinder: IBinder? = null
-    var attachedUserServiceArgs: Bundle? = null
-    var confirmationUid = -1
-    var confirmationPid = -1
-    var confirmationRequestCode = -1
-    var confirmationData: Bundle? = null
-    var flags = 0
-    var flagsUid = -1
-    var flagsMask = -1
-    var flagsValue = -1
-
     override fun attach(application: IPorterApplication, args: Bundle): Bundle? {
         attachCount++
         this.application = application
         this.attachArgs = args
         attachFailure?.let { throw it }
         attachTimePermissionPush?.let { pushPermissionState(it) }
-        return attachReply
+        val reply = Bundle(attachReply)
+        protocolVersion?.let { if (!reply.containsKey(REPLY_PROTOCOL_VERSION)) reply.putInt(REPLY_PROTOCOL_VERSION, it) }
+        minProtocolVersion?.let { if (!reply.containsKey(REPLY_MIN_PROTOCOL_VERSION)) reply.putInt(REPLY_MIN_PROTOCOL_VERSION, it) }
+        return reply
     }
 
     fun pushPermissionState(state: Bundle) {
@@ -60,7 +58,7 @@ internal open class FakePorterService : IPorterService.Stub() {
 
     fun pushRequestPermissionResult(requestCode: Int, allowed: Boolean) {
         val data = Bundle()
-        data.putBoolean(eu.darken.porter.protocol.PorterProtocol.PERMISSION_RESULT_ALLOWED, allowed)
+        data.putBoolean(PorterProtocol.PERMISSION_RESULT_ALLOWED, allowed)
         application!!.dispatchRequestPermissionResult(requestCode, data)
     }
 
@@ -74,8 +72,6 @@ internal open class FakePorterService : IPorterService.Stub() {
 
     override fun setSystemProperty(name: String, value: String) {
     }
-
-    override fun newProcess(cmd: Array<String>?, env: Array<String>?, dir: String?): IPorterRemoteProcess? = null
 
     open override fun addUserService(conn: IPorterServiceConnection?, args: Bundle): Int {
         userServiceArgs = args
@@ -104,32 +100,4 @@ internal open class FakePorterService : IPorterService.Stub() {
     }
 
     override fun shouldShowRequestPermissionRationale(): Boolean = false
-
-    override fun exit() {
-        exitCalls++
-    }
-
-    override fun attachUserService(binder: IBinder, args: Bundle) {
-        attachedUserServiceBinder = binder
-        attachedUserServiceArgs = args
-    }
-
-    override fun dispatchPermissionConfirmationResult(requestUid: Int, requestPid: Int, requestCode: Int, data: Bundle) {
-        confirmationUid = requestUid
-        confirmationPid = requestPid
-        confirmationRequestCode = requestCode
-        confirmationData = data
-    }
-
-    override fun getFlagsForUid(uid: Int, mask: Int): Int {
-        flagsUid = uid
-        flagsMask = mask
-        return flags
-    }
-
-    override fun updateFlagsForUid(uid: Int, mask: Int, value: Int) {
-        flagsUid = uid
-        flagsMask = mask
-        flagsValue = value
-    }
 }

@@ -25,7 +25,6 @@ internal class ShizukuProtocolConstantsTest {
             ShizukuProtocol.USER_SERVICE_ARG_USE_32_BIT_APP_PROCESS,
         )
         assertEquals(ShizukuApiConstants.USER_SERVICE_ARG_REMOVE, ShizukuProtocol.USER_SERVICE_ARG_REMOVE)
-        assertEquals(ShizukuApiConstants.USER_SERVICE_ARG_TOKEN, ShizukuProtocol.USER_SERVICE_ARG_TOKEN)
     }
 
     /** The two strings a Shizuku manager is recognized by, as upstream's ShizukuProvider spells them. */

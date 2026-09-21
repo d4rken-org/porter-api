@@ -57,6 +57,14 @@ public object Porter {
     /** What a test pins the answer to. Guarded by [lock]. */
     private var selectionForTest: Selection? = null
 
+    /**
+     * The last delivered binder, where its attach was refused over versions, and why. Cleared by
+     * the next delivery that publishes or drops a connection. Guarded by [lock].
+     */
+    private var rejected: RejectedDelivery? = null
+
+    private class RejectedDelivery(val binder: IBinder, val why: PorterIncompatibility)
+
     private val _connection = MutableStateFlow<PorterConnection?>(null)
 
     /**
@@ -140,12 +148,25 @@ public object Porter {
         try {
             val pushes = session.permissionPushes()
             val reply = session.wire.attach(packageName)
-            if (reply != null) session.apply(reply, pushes)
+            val incompatibility = session.wire.incompatibility(reply)
+            if (incompatibility != null) {
+                // Nothing to publish: a connection whose server cannot be spoken to would answer
+                // no call. The binder is remembered so availability can say why, and only until
+                // the next delivery says something else.
+                Log.w(TAG, "refusing binder ${session.generation}: $incompatibility")
+                synchronized(lock) {
+                    if (latest === session) rejected = RejectedDelivery(newBinder, incompatibility)
+                }
+                abandon(session)
+                return
+            }
+            session.apply(checkNotNull(reply), pushes)
 
             val superseded: Boolean
             synchronized(lock) {
                 superseded = latest !== session
                 if (!superseded) {
+                    rejected = null
                     // The connection that is handing over stays watched until this one takes over,
                     // and both steps happen under the one lock: a death callback never sees a
                     // connection nobody watches, and an unlink that throws publishes nothing.
@@ -196,6 +217,7 @@ public object Porter {
             current = null
             // An attach still in flight is superseded too: the caller says there is no binder.
             latest = null
+            rejected = null
             dropped?.unlink()
             if (dropped != null) _connection.value = null
         }
@@ -260,7 +282,9 @@ public object Porter {
 
     /**
      * Whether the manager of the backend this process selected is installed, which is not whether
-     * its service is running: only [PorterAvailability.CONNECTED] says a binder answered.
+     * its service is running: only [PorterAvailability.CONNECTED] and
+     * [PorterAvailability.INCOMPATIBLE] say a binder answered, and the second that its server and
+     * this SDK share no protocol version; [incompatibility] says which side has to move.
      *
      * The backend is Porter whenever a package declares Porter's permission, and Shizuku when one
      * declares Shizuku's and the optional `shizuku-compat` artifact is on the classpath. An app
@@ -278,6 +302,7 @@ public object Porter {
      */
     public fun availability(context: Context): PorterAvailability {
         if (pingCurrent()) return PorterAvailability.CONNECTED
+        if (incompatibility != null) return PorterAvailability.INCOMPATIBLE
 
         return when (selectBackend(context)) {
             Selection.PORTER -> availabilityOf(context, PorterProtocol.PERMISSION, PorterProtocol.MANAGER_APPLICATION_ID)
@@ -285,6 +310,16 @@ public object Porter {
             Selection.NONE -> PorterAvailability.NOT_INSTALLED
         }
     }
+
+    /**
+     * Why the last delivered binder was refused, while no connection is held and that binder
+     * still answers: the server it came from is running and cannot be spoken to. Null otherwise.
+     */
+    public val incompatibility: PorterIncompatibility?
+        get() {
+            val refused = synchronized(lock) { if (current == null) rejected else null } ?: return null
+            return refused.why.takeIf { refused.binder.pingBinder() }
+        }
 
     private fun availabilityOf(context: Context, permission: String, manager: String): PorterAvailability {
         val owner = permissionOwner(context, permission) ?: return PorterAvailability.NOT_INSTALLED
@@ -382,6 +417,7 @@ public object Porter {
             latest = null
             selection = null
             selectionForTest = null
+            rejected = null
             postDeadHooks.clear()
             _connection.value = null
         }

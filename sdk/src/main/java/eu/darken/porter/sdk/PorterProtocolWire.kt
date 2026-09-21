@@ -8,17 +8,16 @@ import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PACKAGE_NAME
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE
-import eu.darken.porter.protocol.PorterProtocol.PERMISSION_CONFIRMATION_ALLOWED
-import eu.darken.porter.protocol.PorterProtocol.PERMISSION_CONFIRMATION_ONETIME
 import eu.darken.porter.protocol.PorterProtocol.PERMISSION_RESULT_ALLOWED
 import eu.darken.porter.protocol.PorterProtocol.REPLY_CAPABILITIES
+import eu.darken.porter.protocol.PorterProtocol.REPLY_MIN_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.REPLY_PERMISSION_GRANTED
 import eu.darken.porter.protocol.PorterProtocol.REPLY_PROTOCOL_VERSION
 import eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_SECONTEXT
 import eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_UID
 import eu.darken.porter.protocol.PorterProtocol.REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE
+import eu.darken.porter.protocol.PorterProtocol.REPLY_UNSUPPORTED
 import eu.darken.porter.protocol.PorterProtocol.TRANSACTION_transactRemote
-import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TOKEN
 import eu.darken.porter.server.IPorterApplication
 import eu.darken.porter.server.IPorterService
 import eu.darken.porter.server.IPorterServiceConnection
@@ -68,7 +67,18 @@ internal class PorterProtocolWire(
             shouldShowRequestPermissionRationale =
                 reply.getBoolean(REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE, false),
             patchVersion = null,
+            minProtocolVersion = reply.getInt(REPLY_MIN_PROTOCOL_VERSION, 0),
+            unsupported = reply.getBoolean(REPLY_UNSUPPORTED, false),
         )
+    }
+
+    override fun incompatibility(reply: PorterWire.AttachReply?): PorterIncompatibility? {
+        if (reply == null) return PorterIncompatibility(serverVersion = 0, serverMinVersion = 0)
+        val mismatch = PorterIncompatibility(reply.protocolVersion, reply.minProtocolVersion)
+        // A server that refused says so; one that did not is still held to this side's floor, and
+        // one that reports no version at all cannot be told apart from one below it.
+        val refused = reply.unsupported || reply.protocolVersion < MIN_SERVER_VERSION
+        return if (refused || mismatch.serverTooOld || mismatch.clientTooOld) mismatch else null
     }
 
     override fun transactRemote(data: Parcel, reply: Parcel?, flags: Int) {
@@ -126,42 +136,20 @@ internal class PorterProtocolWire(
         return remote { service.removeUserService(adapter, options) }
     }
 
-    override fun exit() {
-        remote { service.exit() }
-    }
-
-    override fun attachUserService(binder: IBinder, token: String) {
-        val args = Bundle().apply { putString(USER_SERVICE_TOKEN, token) }
-        remote { service.attachUserService(binder, args) }
-    }
-
-    override fun dispatchPermissionConfirmationResult(
-        requestUid: Int,
-        requestPid: Int,
-        requestCode: Int,
-        allowed: Boolean,
-        onetime: Boolean,
-    ) {
-        val data = Bundle().apply {
-            putBoolean(PERMISSION_CONFIRMATION_ALLOWED, allowed)
-            putBoolean(PERMISSION_CONFIRMATION_ONETIME, onetime)
-        }
-        remote { service.dispatchPermissionConfirmationResult(requestUid, requestPid, requestCode, data) }
-    }
-
-    override fun getFlagsForUid(uid: Int, mask: Int): Int = remote { service.getFlagsForUid(uid, mask) }
-
-    override fun updateFlagsForUid(uid: Int, mask: Int, value: Int) {
-        remote { service.updateFlagsForUid(uid, mask, value) }
-    }
-
     private inline fun <T> remote(call: () -> T): T = try {
         call()
     } catch (e: RemoteException) {
         throw PorterRemoteException(e)
     }
 
-    private companion object {
+    internal companion object {
+
+        /**
+         * The oldest server this SDK still speaks to. Raised only when the SDK stops speaking an
+         * older generation; a server above [PorterProtocol.VERSION] is fine as long as its own
+         * floor admits this client.
+         */
+        const val MIN_SERVER_VERSION: Int = 4
 
         /**
          * The stub this wire has registered for [callback], created on first use, and null for the
