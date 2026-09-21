@@ -1,4 +1,7 @@
-plugins { id "com.android.application" version "8.11.1" }
+plugins {
+    id "com.android.application" version "8.11.1"
+    id "org.jetbrains.kotlin.android" version "2.2.20"
+}
 def withLegacySdk = providers.gradleProperty("withLegacySdk").getOrElse("false").toBoolean()
 def withCompat = providers.gradleProperty("withCompat").getOrElse("false").toBoolean()
 def withExtras = providers.gradleProperty("withExtras").getOrElse("false").toBoolean()
@@ -28,6 +31,11 @@ android {
     }
     if (withExtras) {
         sourceSets.main.java.srcDir("src/extras/java")
+    }
+}
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_11
     }
 }
 dependencies {

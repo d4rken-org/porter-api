@@ -24,7 +24,8 @@ declared_licenses = {
 allowed_classes = {
     'shizuku-compat': {
         'moe/shizuku/api/BinderContainer.class',
-        'moe/shizuku/api/BinderContainer$1.class',
+        'moe/shizuku/api/BinderContainer$Companion.class',
+        'moe/shizuku/api/BinderContainer$Companion$CREATOR$1.class',
     },
 }
 components = ('provider', 'activity', 'service', 'receiver')
