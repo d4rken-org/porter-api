@@ -1,6 +1,7 @@
 package eu.darken.porter.sdk
 
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -10,6 +11,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowBinder
+import kotlinx.coroutines.Dispatchers
 
 /** A connection restored after a failed replacement must still be watched for death. */
 @RunWith(RobolectricTestRunner::class)
@@ -17,6 +19,12 @@ import org.robolectric.shadows.ShadowBinder
 internal class RedF2RollbackMonitoringTest {
 
     private val observer = ConnectionObserver()
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
 
     @After
     fun teardown() {

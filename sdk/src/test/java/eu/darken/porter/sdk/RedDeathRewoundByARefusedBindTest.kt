@@ -12,6 +12,7 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
@@ -19,6 +20,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.Dispatchers
 
 /** What a refused bind does to a third caller that rebound successfully while it was outstanding. */
 @RunWith(RobolectricTestRunner::class)
@@ -32,6 +34,12 @@ internal class RedDeathRewoundByARefusedBindTest {
      */
     private val executor = Executors.newSingleThreadExecutor()
     private val rebinderScope = CoroutineScope(executor.asCoroutineDispatcher())
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
 
     @After
     fun teardown() {

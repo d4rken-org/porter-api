@@ -6,6 +6,7 @@ import eu.darken.porter.sdk.UserServiceTestSupport.args
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
 import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -15,11 +16,19 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 
 /** A peek is a query: it asks without starting, and leaves no registration behind on the server. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], manifest = Config.NONE)
 internal class PorterPeekUserServiceTest {
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
 
     @After
     fun teardown() {
@@ -33,7 +42,7 @@ internal class PorterPeekUserServiceTest {
     }
 
     @Test
-    fun aRunningServiceAnswersItsVersionAndTheRegistrationIsDroppedAgain() {
+    fun aRunningServiceAnswersItsVersionAndTheRegistrationIsDroppedAgain() = runBlocking<Unit> {
         val fake = attached()
         fake.userServiceResult = 7
 
@@ -49,7 +58,7 @@ internal class PorterPeekUserServiceTest {
     }
 
     @Test
-    fun aServiceThatIsNotRunningAnswersNullAndNothingIsDropped() {
+    fun aServiceThatIsNotRunningAnswersNullAndNothingIsDropped() = runBlocking<Unit> {
         val fake = attached()
         fake.userServiceResult = -1
 

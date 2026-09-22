@@ -13,6 +13,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -24,6 +25,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowBinder
+import kotlinx.coroutines.runBlocking
 
 /** What a connection that has been replaced or has died may still do to the one that is current. */
 @RunWith(RobolectricTestRunner::class)
@@ -31,6 +33,12 @@ import org.robolectric.shadows.ShadowBinder
 internal class PorterSessionTest {
 
     private val recorder = CoroutineScope(Dispatchers.Unconfined)
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
 
     @After
     fun teardown() {
@@ -46,7 +54,7 @@ internal class PorterSessionTest {
     }
 
     @Test
-    fun aDeathNotificationForASupersededConnectionLeavesTheCurrentOne() {
+    fun aDeathNotificationForASupersededConnectionLeavesTheCurrentOne() = runBlocking<Unit> {
         val first = FakePorterService()
         Porter.onBinderReceived(first, PACKAGE)
         val firstDeath = deathRecipientOf(first)
@@ -57,7 +65,7 @@ internal class PorterSessionTest {
         firstDeath.binderDied()
 
         val current = Porter.connection.value!!
-        assertTrue(current.isAlive)
+        assertTrue(current.isAlive())
         assertSame(second, current.binder)
         assertFalse("a death of the superseded connection must not be published", seen.contains(null))
     }
@@ -78,7 +86,7 @@ internal class PorterSessionTest {
     }
 
     @Test
-    fun anAttachThatFailsLeavesTheConnectionItCouldNotReplace() {
+    fun anAttachThatFailsLeavesTheConnectionItCouldNotReplace() = runBlocking<Unit> {
         val serving = FakePorterService()
         serving.attachReply = permissionState(true, false)
         Porter.onBinderReceived(serving, PACKAGE)
@@ -88,13 +96,13 @@ internal class PorterSessionTest {
         Porter.onBinderReceived(refused, PACKAGE)
 
         val current = Porter.connection.value!!
-        assertTrue(current.isAlive)
+        assertTrue(current.isAlive())
         assertSame(serving, current.binder)
         assertEquals(PermissionState.Granted, current.checkPermission())
     }
 
     @Test
-    fun aSupersededConnectionCannotChangeThePermissionState() {
+    fun aSupersededConnectionCannotChangeThePermissionState() = runBlocking<Unit> {
         val first = FakePorterService()
         Porter.onBinderReceived(first, PACKAGE)
         val firstApplication = first.application!!

@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -16,6 +17,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.Dispatchers
 
 /**
  * Cancelling a collection while the death of its service is already queued ends that collection
@@ -29,6 +31,12 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], manifest = Config.NONE)
 internal class RedUnbindCancelsAQueuedDeathTest {
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
 
     @After
     fun teardown() {

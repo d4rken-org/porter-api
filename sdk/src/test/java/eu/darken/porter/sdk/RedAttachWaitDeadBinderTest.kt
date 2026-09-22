@@ -10,6 +10,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 import moe.shizuku.server.IShizukuApplication
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -22,6 +23,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowBinder
 import org.robolectric.shadows.ShadowLog
+import kotlinx.coroutines.Dispatchers
 
 /**
  * A Shizuku server that dies while a client is waiting for the attach state it answers nothing for.
@@ -49,6 +51,12 @@ internal class RedAttachWaitDeadBinderTest {
             super.attachApplication(application, args)
             asked.countDown()
         }
+    }
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
     }
 
     @After

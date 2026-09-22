@@ -10,7 +10,7 @@ import java.io.FileDescriptor
  * Wraps a binder so that every transaction on it is forwarded through the server of one
  * connection. [PorterConnection.wrap] is the usual way to get one.
  */
-public class PorterBinderWrapper(
+internal class PorterBinderWrapper(
     private val connection: PorterConnection,
     private val original: IBinder,
 ) : IBinder {

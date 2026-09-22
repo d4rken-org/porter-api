@@ -29,7 +29,7 @@ internal class UserServiceArgsTest {
         assertEquals(COMPONENT, bundle.getParcelable<ComponentName>(USER_SERVICE_COMPONENT))
         assertEquals(PROCESS_NAME_SUFFIX, bundle.getString(USER_SERVICE_PROCESS_NAME_SUFFIX))
         assertEquals(1, bundle.getInt(USER_SERVICE_VERSION_CODE))
-        assertTrue(bundle.getBoolean(USER_SERVICE_DAEMON))
+        assertFalse("a service ends with the process that bound it unless asked otherwise", bundle.getBoolean(USER_SERVICE_DAEMON))
         assertFalse(bundle.getBoolean(USER_SERVICE_DEBUGGABLE))
         assertFalse(bundle.getBoolean(USER_SERVICE_USE_32_BIT))
         assertFalse("no tag key unless a tag was set", bundle.containsKey(USER_SERVICE_TAG))
@@ -38,12 +38,12 @@ internal class UserServiceArgsTest {
     @Test
     fun theAddBundleCarriesWhatWasSet() {
         val bundle = PorterUserServiceCodec.encodeUserService(
-            args().copy(tag = "probe-tag", version = 3, daemon = false, debuggable = true), false,
+            args().copy(tag = "probe-tag", version = 3, daemon = true, debuggable = true), false,
         )
 
         assertEquals("probe-tag", bundle.getString(USER_SERVICE_TAG))
         assertEquals(3, bundle.getInt(USER_SERVICE_VERSION_CODE))
-        assertFalse(bundle.getBoolean(USER_SERVICE_DAEMON))
+        assertTrue(bundle.getBoolean(USER_SERVICE_DAEMON))
         assertTrue(bundle.getBoolean(USER_SERVICE_DEBUGGABLE))
     }
 

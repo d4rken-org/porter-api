@@ -7,10 +7,13 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.RemoteException
 import android.util.Log
-import androidx.annotation.RestrictTo
-import androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX
 import androidx.annotation.VisibleForTesting
 import eu.darken.porter.protocol.PorterProtocol
+import java.util.concurrent.Executor
+import java.util.concurrent.Executors
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -85,39 +88,57 @@ public object Porter {
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    /** Where every suspending call that blocks on a server runs. A test pins it; [resetForTest] restores it. */
+    @Volatile
+    internal var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+
+    private val defaultDeliveryExecutor: Executor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "porter-delivery").apply { isDaemon = true }
+    }
+
+    /**
+     * Runs the attaches this process starts on its own, one at a time: a fetch from the provider
+     * process blocks for the attach, and what asks for one runs on the main thread. A test pins it;
+     * [resetForTest] restores it.
+     */
+    @Volatile
+    internal var deliveryExecutor: Executor = defaultDeliveryExecutor
+
     // --------------------- delivery ----------------------
 
     /** Announces a binder that speaks Porter's own wire. */
-    @RestrictTo(LIBRARY_GROUP_PREFIX)
-    public fun onBinderReceived(newBinder: IBinder?, packageName: String) {
+    internal fun onBinderReceived(newBinder: IBinder?, packageName: String): Boolean {
         // No Context to select with, and nothing to select: this wire is Porter's by construction.
-        onBinderReceived(newBinder, packageName, PorterBackend.PORTER, selected = null)
+        return onBinderReceived(newBinder, packageName, PorterBackend.PORTER, selected = null)
     }
 
     /**
      * A delivery from a server, which this process takes only on the backend it selected. Arrival
      * order therefore never decides which server an app talks to, and neither does a death.
      */
-    internal fun onBinderReceived(context: Context, newBinder: IBinder?, packageName: String, backend: PorterBackend) {
+    internal fun onBinderReceived(context: Context, newBinder: IBinder?, packageName: String, backend: PorterBackend): Boolean {
         // Resolving asks the package manager, so it happens before the lock; the answer decides
         // nothing until it is checked inside, against the connection that is published then.
         val selected = if (newBinder == null) null else selectBackend(context)
-        onBinderReceived(newBinder, packageName, backend, selected)
+        return onBinderReceived(newBinder, packageName, backend, selected)
     }
 
     /** As the delivery above, for a binder the caller already knows this process is entitled to take. */
-    internal fun onBinderReceived(newBinder: IBinder?, packageName: String, backend: PorterBackend) {
+    internal fun onBinderReceived(newBinder: IBinder?, packageName: String, backend: PorterBackend): Boolean =
         onBinderReceived(newBinder, packageName, backend, selected = null)
-    }
 
     /**
+     * Blocks for the attach, so it runs on a binder thread or on [deliveryExecutor], never on the
+     * main thread.
+     *
      * @param selected the backend this process resolved for this delivery, or null where the caller
      * delivers a binder it already knows this process is entitled to take.
+     * @return whether this call published [newBinder] as the connection
      */
-    private fun onBinderReceived(newBinder: IBinder?, packageName: String, backend: PorterBackend, selected: Selection?) {
+    private fun onBinderReceived(newBinder: IBinder?, packageName: String, backend: PorterBackend, selected: Selection?): Boolean {
         if (newBinder == null) {
             dropCurrent()
-            return
+            return false
         }
 
         val session: PorterConnection
@@ -125,19 +146,19 @@ public object Porter {
             // The same binder delivered twice is the same connection. Attaching again would ask the
             // server for a second grant for it, link a second death recipient, and supersede a
             // replacement that is attaching, so the published connection counts as well as latest.
-            if (current?.binder === newBinder) return
-            if (latest?.binder === newBinder) return
+            if (current?.binder === newBinder) return false
+            if (latest?.binder === newBinder) return false
 
             // A live connection is the answer, whoever delivers and however the delivery got here:
             // no path replaces the server an app is talking to with one on the other backend.
             val published = current
             if (published != null && published.backend != backend) {
                 Log.i(TAG, "ignoring a $backend binder, connected on ${published.backend}")
-                return
+                return false
             }
             if (selected != null && selected != selectionOf(backend)) {
                 Log.i(TAG, "ignoring a $backend binder, this process selected $selected")
-                return
+                return false
             }
 
             session = PorterConnection(++connections, newBinder, backend)
@@ -158,7 +179,7 @@ public object Porter {
                     if (latest === session) rejected = RejectedDelivery(newBinder, incompatibility)
                 }
                 abandon(session)
-                return
+                return false
             }
             session.apply(checkNotNull(reply), pushes)
 
@@ -186,12 +207,13 @@ public object Porter {
             if (superseded) {
                 // A newer binder arrived while this one was attaching, and owns the connection now.
                 session.unlink()
-                return
+                return false
             }
             // Outside the lock: giving up the previous connection can call its server.
             previous?.markLost()
 
             Log.i(TAG, "attached, connection ${session.generation}")
+            return true
         } catch (e: RemoteException) {
             Log.w(TAG, Log.getStackTraceString(e))
             abandon(session)
@@ -199,6 +221,7 @@ public object Porter {
             Log.w(TAG, Log.getStackTraceString(e))
             abandon(session)
         }
+        return false
     }
 
     /** Gives up on [session] without disturbing the connection that has replaced it. */
@@ -284,32 +307,32 @@ public object Porter {
 
     /**
      * Whether the manager of the backend this process selected is installed, which is not whether
-     * its service is running: only [PorterAvailability.CONNECTED] and
-     * [PorterAvailability.INCOMPATIBLE] say a binder answered, and the second that its server and
-     * this SDK share no protocol version; [incompatibility] says which side has to move.
+     * its service is running: only [PorterAvailability.Connected] and
+     * [PorterAvailability.Incompatible] say a binder answered, and the second that its server and
+     * this SDK share no protocol version; its [PorterIncompatibility] says which side has to move.
      *
      * The backend is Porter whenever a package declares Porter's permission, and Shizuku when one
      * declares Shizuku's and the optional `shizuku-compat` artifact is on the classpath. An app
      * without that artifact can receive no Shizuku binder at all, so a Shizuku-only device reads
-     * [PorterAvailability.NOT_INSTALLED] rather than promising a connection it cannot make.
+     * [PorterAvailability.NotInstalled] rather than promising a connection it cannot make.
      *
-     * [PorterAvailability.INSTALLED_UNRECOGNIZED] means a package owns the selected backend's
+     * [PorterAvailability.InstalledUnrecognized] means a package owns the selected backend's
      * permission and is not the manager this SDK knows. Do not name or launch it without your own
      * verification.
      *
      * The permission lookup behind this is not filtered by package visibility, so a manager is
      * found whatever package it is published under. One that owns the permission without being
-     * the manager this SDK knows reads [PorterAvailability.INSTALLED_UNRECOGNIZED], not
-     * [PorterAvailability.NOT_INSTALLED].
+     * the manager this SDK knows reads [PorterAvailability.InstalledUnrecognized], not
+     * [PorterAvailability.NotInstalled].
      */
-    public fun availability(context: Context): PorterAvailability {
-        if (pingCurrent()) return PorterAvailability.CONNECTED
-        if (incompatibility != null) return PorterAvailability.INCOMPATIBLE
+    public suspend fun availability(context: Context): PorterAvailability = withContext(ioDispatcher) {
+        if (pingCurrent()) return@withContext PorterAvailability.Connected
+        incompatibility()?.let { return@withContext PorterAvailability.Incompatible(it) }
 
-        return when (selectBackend(context)) {
+        when (selectBackend(context)) {
             Selection.PORTER -> availabilityOf(context, PorterProtocol.PERMISSION, PorterProtocol.MANAGER_APPLICATION_ID)
             Selection.SHIZUKU -> availabilityOf(context, ShizukuProtocol.PERMISSION, ShizukuProtocol.MANAGER_APPLICATION_ID)
-            Selection.NONE -> PorterAvailability.NOT_INSTALLED
+            Selection.NONE -> PorterAvailability.NotInstalled
         }
     }
 
@@ -317,15 +340,14 @@ public object Porter {
      * Why the last delivered binder was refused, while no connection is held and that binder
      * still answers: the server it came from is running and cannot be spoken to. Null otherwise.
      */
-    public val incompatibility: PorterIncompatibility?
-        get() {
-            val refused = synchronized(lock) { if (current == null) rejected else null } ?: return null
-            return refused.why.takeIf { refused.binder.pingBinder() }
-        }
+    internal fun incompatibility(): PorterIncompatibility? {
+        val refused = synchronized(lock) { if (current == null) rejected else null } ?: return null
+        return refused.why.takeIf { refused.binder.pingBinder() }
+    }
 
     private fun availabilityOf(context: Context, permission: String, manager: String): PorterAvailability {
-        val owner = permissionOwner(context, permission) ?: return PorterAvailability.NOT_INSTALLED
-        return if (manager == owner) PorterAvailability.INSTALLED_NOT_CONNECTED else PorterAvailability.INSTALLED_UNRECOGNIZED
+        val owner = permissionOwner(context, permission) ?: return PorterAvailability.NotInstalled
+        return if (manager == owner) PorterAvailability.InstalledNotConnected else PorterAvailability.InstalledUnrecognized
     }
 
     // --------------------- backend selection ----------------------
@@ -423,6 +445,9 @@ public object Porter {
             postDeadHooks.clear()
             _connection.value = null
         }
+        ioDispatcher = Dispatchers.IO
+        deliveryExecutor = defaultDeliveryExecutor
         ShizukuCompat.setPresentForTest(null)
+        PorterApiProvider.resetForTest()
     }
 }

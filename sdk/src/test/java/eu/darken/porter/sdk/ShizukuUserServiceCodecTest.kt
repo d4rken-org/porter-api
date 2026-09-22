@@ -52,7 +52,7 @@ internal class ShizukuUserServiceCodecTest {
         assertTrue(bundle.containsKey(USER_SERVICE_ARG_VERSION_CODE))
         assertEquals(1, bundle.getInt(USER_SERVICE_ARG_VERSION_CODE))
         assertTrue(bundle.containsKey(USER_SERVICE_ARG_DAEMON))
-        assertTrue(bundle.getBoolean(USER_SERVICE_ARG_DAEMON))
+        assertFalse(bundle.getBoolean(USER_SERVICE_ARG_DAEMON))
         assertTrue(bundle.containsKey(USER_SERVICE_ARG_DEBUGGABLE))
         assertFalse(bundle.getBoolean(USER_SERVICE_ARG_DEBUGGABLE))
         assertTrue(bundle.containsKey(USER_SERVICE_ARG_USE_32_BIT_APP_PROCESS))
@@ -64,14 +64,14 @@ internal class ShizukuUserServiceCodecTest {
     @Test
     fun theAddBundleCarriesWhatWasSet() {
         val bundle = ShizukuUserServiceCodec.encodeUserService(
-            args().copy(tag = "probe-tag", version = 3, daemon = false, debuggable = true),
+            args().copy(tag = "probe-tag", version = 3, daemon = true, debuggable = true),
             false,
         )
 
         assertTrue(bundle.containsKey(USER_SERVICE_ARG_TAG))
         assertEquals("probe-tag", bundle.getString(USER_SERVICE_ARG_TAG))
         assertEquals(3, bundle.getInt(USER_SERVICE_ARG_VERSION_CODE))
-        assertFalse(bundle.getBoolean(USER_SERVICE_ARG_DAEMON))
+        assertTrue(bundle.getBoolean(USER_SERVICE_ARG_DAEMON))
         assertTrue(bundle.getBoolean(USER_SERVICE_ARG_DEBUGGABLE))
     }
 

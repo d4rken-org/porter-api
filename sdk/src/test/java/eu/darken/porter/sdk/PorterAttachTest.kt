@@ -21,6 +21,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -32,6 +33,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowBinder
+import kotlinx.coroutines.runBlocking
 
 /** What `onBinderReceived` sends, what it believes of the reply and what it forgets. */
 @RunWith(RobolectricTestRunner::class)
@@ -39,6 +41,12 @@ import org.robolectric.shadows.ShadowBinder
 internal class PorterAttachTest {
 
     private val recorder = CoroutineScope(Dispatchers.Unconfined)
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
 
     @After
     fun teardown() {
@@ -56,14 +64,14 @@ internal class PorterAttachTest {
     private fun current(): PorterConnection = checkNotNull(Porter.connection.value)
 
     @Test
-    fun attachSendsThePackageAndVersionAndReadsTheReply() {
+    fun attachSendsThePackageAndVersionAndReadsTheReply() = runBlocking<Unit> {
         val fake = attached()
 
         assertEquals(PACKAGE, fake.attachArgs!!.getString(ATTACH_PACKAGE_NAME))
         assertEquals(PorterProtocol.VERSION, fake.attachArgs!!.getInt(ATTACH_PROTOCOL_VERSION))
 
         val connection = current()
-        assertTrue(connection.isAlive)
+        assertTrue(connection.isAlive())
         assertEquals(SERVER_UID, connection.uid)
         val server = connection.serverInfo
         assertEquals(PorterBackend.PORTER, server.backend)
@@ -74,7 +82,7 @@ internal class PorterAttachTest {
     }
 
     @Test
-    fun aReplyWithOnlyTheVersionsLeavesNoStaleServerState() {
+    fun aReplyWithOnlyTheVersionsLeavesNoStaleServerState() = runBlocking<Unit> {
         attached()
 
         val sparse = FakePorterService()
@@ -114,7 +122,7 @@ internal class PorterAttachTest {
     }
 
     @Test
-    fun redeliveringTheSameBinderKeepsTheGrantAndANewOneDropsIt() {
+    fun redeliveringTheSameBinderKeepsTheGrantAndANewOneDropsIt() = runBlocking<Unit> {
         val fake = attached()
         assertEquals(PermissionState.Granted, current().checkPermission())
 
@@ -157,7 +165,7 @@ internal class PorterAttachTest {
     }
 
     @Test
-    fun aPausedGrantReplacesTheCachedAnswer() {
+    fun aPausedGrantReplacesTheCachedAnswer() = runBlocking<Unit> {
         val fake = attached()
         val connection = current()
         assertEquals(PermissionState.Granted, connection.checkPermission())
@@ -169,7 +177,7 @@ internal class PorterAttachTest {
     }
 
     @Test
-    fun aPauseArrivingDuringAttachOutlivesTheReply() {
+    fun aPauseArrivingDuringAttachOutlivesTheReply() = runBlocking<Unit> {
         val fake = FakePorterService()
         fake.attachReply = fullReply()
         fake.attachTimePermissionPush = permissionState(false, true)
@@ -182,7 +190,7 @@ internal class PorterAttachTest {
     }
 
     @Test
-    fun aGrantArrivingDuringACheckOutlivesTheAnswer() {
+    fun aGrantArrivingDuringACheckOutlivesTheAnswer() = runBlocking<Unit> {
         val fake = FakePorterService()
         Porter.onBinderReceived(fake, PACKAGE)
         fake.selfPermission = false
@@ -192,7 +200,7 @@ internal class PorterAttachTest {
     }
 
     @Test
-    fun aResumedGrantComesBackThroughTheSameChannel() {
+    fun aResumedGrantComesBackThroughTheSameChannel() = runBlocking<Unit> {
         val fake = attached()
         val connection = current()
         fake.application!!.dispatchPermissionStateChanged(permissionState(false, true))

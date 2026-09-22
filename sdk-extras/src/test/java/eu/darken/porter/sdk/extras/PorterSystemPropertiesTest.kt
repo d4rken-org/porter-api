@@ -12,10 +12,11 @@ import eu.darken.porter.protocol.PorterProtocol.REPLY_SERVER_UID
 import eu.darken.porter.protocol.PorterProtocol.REPLY_SHOULD_SHOW_REQUEST_PERMISSION_RATIONALE
 import eu.darken.porter.sdk.Porter
 import eu.darken.porter.sdk.PorterConnection
+import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -27,10 +28,12 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], manifest = Config.NONE)
 internal class PorterSystemPropertiesTest {
 
-    // No reset between tests: the SDK's test hook is internal to its module, and every test here
-    // attaches a fresh fake, which replaces whatever the previous one left published.
-
     private class Attached(val fake: FakeExtrasService, val connection: PorterConnection)
+
+    @After
+    fun teardown() {
+        Porter.resetForTest()
+    }
 
     private fun attached(): Attached {
         val reply = Bundle()
@@ -49,7 +52,7 @@ internal class PorterSystemPropertiesTest {
     }
 
     @Test
-    fun getIntDecodesTheFormsParseIntRejects() {
+    fun getIntDecodesTheFormsParseIntRejects() = runBlocking<Unit> {
         val (fake, connection) = attached().let { it.fake to it.connection }
 
         fake.propertyValue = "0x1f"
@@ -60,7 +63,7 @@ internal class PorterSystemPropertiesTest {
     }
 
     @Test
-    fun getLongDecodesTheFormsParseLongRejects() {
+    fun getLongDecodesTheFormsParseLongRejects() = runBlocking<Unit> {
         val (fake, connection) = attached().let { it.fake to it.connection }
 
         fake.propertyValue = "0x1f"
@@ -71,24 +74,36 @@ internal class PorterSystemPropertiesTest {
     }
 
     @Test
-    fun getBooleanIsTrueOnlyForTheWordTrue() {
+    fun getBooleanReadsThePlatformsSpellings() = runBlocking<Unit> {
         val (fake, connection) = attached().let { it.fake to it.connection }
 
-        fake.propertyValue = "true"
-        assertTrue(connection.getSystemPropertyBoolean(KEY, false))
-
-        fake.propertyValue = "TRUE"
-        assertTrue(connection.getSystemPropertyBoolean(KEY, false))
-
-        fake.propertyValue = "yes"
-        assertFalse(connection.getSystemPropertyBoolean(KEY, true))
-
-        fake.propertyValue = "1"
-        assertFalse(connection.getSystemPropertyBoolean(KEY, true))
+        for (value in listOf("1", "y", "yes", "on", "true")) {
+            fake.propertyValue = value
+            assertTrue(value, connection.getSystemPropertyBoolean(KEY, false))
+        }
+        for (value in listOf("0", "n", "no", "off", "false")) {
+            fake.propertyValue = value
+            assertFalse(value, connection.getSystemPropertyBoolean(KEY, true))
+        }
     }
 
     @Test
-    fun getWithoutADefaultSendsNull() {
+    fun getBooleanFallsBackToTheDefaultForAnythingElse() = runBlocking<Unit> {
+        val (fake, connection) = attached().let { it.fake to it.connection }
+
+        for (value in listOf("TRUE", "2", "enabled")) {
+            fake.propertyValue = value
+            assertTrue(value, connection.getSystemPropertyBoolean(KEY, true))
+            assertFalse(value, connection.getSystemPropertyBoolean(KEY, false))
+        }
+
+        fake.propertyValue = null
+        assertTrue(connection.getSystemPropertyBoolean(KEY, true))
+        assertEquals("the default travels as the server's own fallback", "true", fake.readDefault)
+    }
+
+    @Test
+    fun getWithoutADefaultSendsNull() = runBlocking<Unit> {
         val (fake, connection) = attached().let { it.fake to it.connection }
         fake.propertyValue = "34"
 
@@ -99,7 +114,7 @@ internal class PorterSystemPropertiesTest {
     }
 
     @Test
-    fun getSendsTheDefaultItWasGiven() {
+    fun getSendsTheDefaultItWasGiven() = runBlocking<Unit> {
         val (fake, connection) = attached().let { it.fake to it.connection }
 
         assertEquals("fallback", connection.getSystemProperty(KEY, "fallback"))
@@ -107,7 +122,7 @@ internal class PorterSystemPropertiesTest {
     }
 
     @Test
-    fun getIntEncodesTheDefaultAndReadsItBack() {
+    fun getIntEncodesTheDefaultAndReadsItBack() = runBlocking<Unit> {
         val (fake, connection) = attached().let { it.fake to it.connection }
 
         assertEquals(7, connection.getSystemPropertyInt(KEY, 7))
@@ -115,7 +130,7 @@ internal class PorterSystemPropertiesTest {
     }
 
     @Test
-    fun setReachesTheServer() {
+    fun setReachesTheServer() = runBlocking<Unit> {
         val (fake, connection) = attached().let { it.fake to it.connection }
 
         connection.setSystemProperty("persist.porter.test", "on")
@@ -125,11 +140,12 @@ internal class PorterSystemPropertiesTest {
     }
 
     @Test
-    fun getIntPropagatesAMalformedValue() {
+    fun aMalformedNumberReadsAsTheDefault() = runBlocking<Unit> {
         val (fake, connection) = attached().let { it.fake to it.connection }
         fake.propertyValue = "not-a-number"
 
-        assertThrows(NumberFormatException::class.java) { connection.getSystemPropertyInt(KEY, 0) }
+        assertEquals(7, connection.getSystemPropertyInt(KEY, 7))
+        assertEquals(7L, connection.getSystemPropertyLong(KEY, 7L))
     }
 
     private companion object {

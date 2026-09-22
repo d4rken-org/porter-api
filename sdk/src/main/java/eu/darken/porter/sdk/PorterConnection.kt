@@ -1,8 +1,8 @@
 package eu.darken.porter.sdk
 
 import android.content.pm.PackageManager
+import android.os.DeadObjectException
 import android.os.IBinder
-import android.os.Parcel
 import android.util.Log
 import eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE
 import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_RESULT_NOT_RUNNING
@@ -15,6 +15,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.withContext
 
 /**
  * One connection to one server binder: what its attach reply said, what the server has pushed since,
@@ -25,8 +27,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  * permission push or an attach reply that arrives late therefore carries the connection it belongs
  * to, and can be told apart from the connection that is current now.
  *
- * The calls here that answer from the server are single binder transactions and block for one.
- * [requestPermission] and [userService] are the two that wait on another party, and suspend.
+ * Every call here that reaches the server suspends and is safe to make from the main thread. A
+ * failed call throws a [PorterException]: [PorterSecurityException] where the server refused it,
+ * [PorterRemoteException] where the binder failed.
  */
 public class PorterConnection internal constructor(
     /** Never reset, so a connection of this process is never mistaken for a later one. */
@@ -135,37 +138,28 @@ public class PorterConnection internal constructor(
     public val serverInfo: PorterServerInfo
         get() = PorterServerInfo(backend, serverProtocolVersion, serverPatchVersion)
 
-    /** The uid the server runs as: 0 for root, 2000 for adb. */
-    public val uid: Int
-        get() {
-            if (serverUid != -1) return serverUid
-            serverUid = wire.getUid()
-            return serverUid
-        }
-
-    /** The uid as far as it is already known, without asking the server for it. */
-    internal val reportedUid: Int get() = serverUid
+    /** The uid the server runs as: 0 for root, 2000 for adb. Known from attach, so reading it asks nothing. */
+    public val uid: Int get() = serverUid
 
     internal val capabilities: Long get() = serverCapabilities
 
     /**
-     * SELinux context of the server process. For adb this is `u:r:shell:s0`; for root it depends
-     * on the su implementation.
+     * SELinux context of the server process, as the server reported it at attach, and null where it
+     * reported none. For adb this is `u:r:shell:s0`; for root it depends on the su implementation.
      */
-    public val seLinuxContext: String?
-        get() {
-            serverContext?.let { return it }
-            serverContext = wire.getSELinuxContext()
-            return serverContext
-        }
+    public val seLinuxContext: String? get() = serverContext
 
     /** Whether the server binder still answers a ping. */
-    public val isAlive: Boolean get() = binder.pingBinder()
+    public suspend fun isAlive(): Boolean = withContext(Porter.ioDispatcher) { binder.pingBinder() }
 
     internal fun permissionPushes(): Int = synchronized(permissionLock) { permissionStateGeneration }
 
+    /**
+     * Takes what a compatible attach reply said, before the connection is published. A reply without
+     * a uid is completed by asking the server, whose failure abandons the connection.
+     */
     internal fun apply(reply: PorterWire.AttachReply, pushes: Int) {
-        serverUid = reply.serverUid
+        serverUid = if (reply.serverUid != -1) reply.serverUid else wire.getUid()
         serverProtocolVersion = reply.protocolVersion
         serverPatchVersion = reply.patchVersion
         serverContext = reply.seLinuxContext
@@ -202,7 +196,9 @@ public class PorterConnection internal constructor(
      * attach state, because that wire carries no callback of its own for it. A server that never
      * re-sends leaves a grant in place until its binder dies.
      */
-    public fun checkPermission(): PermissionState {
+    public suspend fun checkPermission(): PermissionState = withContext(Porter.ioDispatcher) { checkPermissionBlocking() }
+
+    private fun checkPermissionBlocking(): PermissionState {
         var pushes: Int
         synchronized(permissionLock) {
             if (permissionGranted) return PermissionState.Granted
@@ -250,12 +246,12 @@ public class PorterConnection internal constructor(
             pendingRequests[requestCode] = answer
         }
         try {
-            wire.requestPermission(requestCode)
+            withContext(Porter.ioDispatcher) { wire.requestPermission(requestCode) }
             val result = answer.await()
             if (result.allowed) return synchronized(permissionLock) { _permission.value }
             // A denial names no rationale flag, so the server is asked for it. The answer
             // describes the denial, so it applies only while that is still the state.
-            val rationale = wire.shouldShowRequestPermissionRationale()
+            val rationale = withContext(Porter.ioDispatcher) { wire.shouldShowRequestPermissionRationale() }
             synchronized(permissionLock) {
                 if (permissionStateGeneration == result.pushes) {
                     shouldShowRequestPermissionRationale = rationale
@@ -294,25 +290,23 @@ public class PorterConnection internal constructor(
     // --------------------- calls on the server ----------------------
 
     /** Whether the server itself holds [permission]. */
-    public fun checkRemotePermission(permission: String): Boolean {
-        if (reportedUid == 0) return true
-        return wire.checkPermission(permission) == PackageManager.PERMISSION_GRANTED
+    public suspend fun checkRemotePermission(permission: String): Boolean {
+        if (serverUid == 0) return true
+        return withContext(Porter.ioDispatcher) { wire.checkPermission(permission) } == PackageManager.PERMISSION_GRANTED
     }
 
-    public fun getSystemProperty(name: String, default: String? = null): String? =
-        wire.getSystemProperty(name, default)
+    public suspend fun getSystemProperty(name: String, default: String? = null): String? =
+        withContext(Porter.ioDispatcher) { wire.getSystemProperty(name, default) }
 
-    public fun setSystemProperty(name: String, value: String) {
-        wire.setSystemProperty(name, value)
-    }
-
-    /** Calls [IBinder.transact] in the server. See [wrap] for the usual way to reach it. */
-    public fun transactRemote(data: Parcel, reply: Parcel?, flags: Int) {
-        wire.transactRemote(data, reply, flags)
+    public suspend fun setSystemProperty(name: String, value: String) {
+        withContext(Porter.ioDispatcher) { wire.setSystemProperty(name, value) }
     }
 
     /**
      * Wraps [binder] so that every transaction on the result is forwarded through the server.
+     * Creating the wrapper asks nothing; each transaction on it blocks for the server, as any
+     * binder call does, so make them off the main thread. A refusal arrives in the reply, so the
+     * interface's own proxy raises it as the platform exception, not as a [PorterException].
      *
      * example:
      * ```
@@ -346,8 +340,8 @@ public class PorterConnection internal constructor(
      * below 13.4 is not asked, and keeps it until the service dies.
      *
      * Unbinding does not kill the service: implement a "destroy" method under transaction code
-     * [eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TRANSACTION_destroy] (`16777114` in
-     * aidl) that cleans up and calls [System.exit], or call [stopUserService].
+     * [UserServiceArgs.TRANSACTION_DESTROY] (`16777114` in aidl) that cleans up and calls
+     * [System.exit], and call [stopUserService] to send it.
      *
      * A service is per Android user: a work profile's copy of an app is served by its own process,
      * started with that profile's uid, whatever the personal profile's copy is running.
@@ -376,6 +370,12 @@ public class PorterConnection internal constructor(
             // Removes the registration this call made, and no lifecycle state: a death either
             // happened, in which case the binding is retired and evicted, or it did not.
             if (registration.inserted) registration.connection.removeListener(listener)
+            // A server already gone ends the flow as its death will once that is dispatched, so a
+            // collector does not see a failure or a completion depending on which came first.
+            if (e is PorterRemoteException && e.cause is DeadObjectException) {
+                close()
+                return@callbackFlow
+            }
             throw e
         }
         // Registered here before the connection was lost, and on the server after its bindings
@@ -383,7 +383,7 @@ public class PorterConnection internal constructor(
         if (userServices.isClosed()) dropOnServer(registration.connection)
         if (!start && result == USER_SERVICE_RESULT_NOT_RUNNING) close()
         awaitClose { release(args, registration.connection, listener) }
-    }.distinctUntilChanged { old, new -> old === new }
+    }.flowOn(Porter.ioDispatcher).distinctUntilChanged { old, new -> old === new }
 
     /**
      * Drops one collector's registration, and the server's binding with it when it was the last.
@@ -416,7 +416,9 @@ public class PorterConnection internal constructor(
      * Whether the service is running: its version code if it is, or null. Does not start it, and
      * does not bind this caller to it.
      */
-    public fun peekUserService(args: UserServiceArgs): Int? {
+    public suspend fun peekUserService(args: UserServiceArgs): Int? = withContext(Porter.ioDispatcher) { peekBlocking(args) }
+
+    private fun peekBlocking(args: UserServiceArgs): Int? {
         // Outside the registry: nothing collects through it, so a running service's push lands on
         // a callback nobody reads, and the registration is dropped again as soon as it answered.
         val probe = PorterServiceConnection(userServices, args)
@@ -432,13 +434,12 @@ public class PorterConnection internal constructor(
     }
 
     /**
-     * Asks the service to stop, by sending it
-     * [eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TRANSACTION_destroy]. The server does
+     * Asks the service to stop, by sending it [UserServiceArgs.TRANSACTION_DESTROY]. The server does
      * not kill the process, so a service that does not implement that transaction keeps running.
      * Collectors of [userService] see the flow complete either way.
      */
-    public fun stopUserService(args: UserServiceArgs) {
-        wire.removeUserService(null, args, remove = true)
+    public suspend fun stopUserService(args: UserServiceArgs) {
+        withContext(Porter.ioDispatcher) { wire.removeUserService(null, args, remove = true) }
     }
 
     // --------------------- lifecycle ----------------------
@@ -476,8 +477,6 @@ public class PorterConnection internal constructor(
     }
 
     override fun toString(): String = "PorterConnection(generation=$generation, backend=$backend)"
-
-    private companion object {
-        const val TAG = "Porter"
-    }
 }
+
+private const val TAG = "Porter"

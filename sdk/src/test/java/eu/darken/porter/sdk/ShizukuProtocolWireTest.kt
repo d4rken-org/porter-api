@@ -19,6 +19,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -96,16 +97,35 @@ internal class ShizukuProtocolWireTest {
         assertTrue(reply.shouldShowRequestPermissionRationale)
     }
 
+    /** Below the floor the attach completes and the reply is refused, so the refusal can be reported. */
     @Test
     fun aServerBelowTheFloorIsRefused() {
-        val fake = FakeShizukuService()
-        fake.bindApplicationReply = FakeShizukuService.replyWithVersion(12)
-        val wire = ShizukuProtocolWire(fake, callbacks)
+        for (version in listOf(0, 12)) {
+            val fake = FakeShizukuService()
+            fake.bindApplicationReply = FakeShizukuService.replyWithVersion(version)
+            val wire = ShizukuProtocolWire(fake, callbacks)
 
-        val thrown = assertThrows(IllegalStateException::class.java) { wire.attach(PACKAGE) }
+            val why = wire.incompatibility(wire.attach(PACKAGE))
 
-        assertTrue(thrown.message!!.contains("12"))
-        assertTrue(thrown.message!!.contains("13"))
+            assertNotNull("version $version", why)
+            assertEquals(PorterBackend.SHIZUKU, why!!.backend)
+            assertEquals(version, why.serverVersion)
+            assertEquals(ShizukuProtocol.CLIENT_API_VERSION, why.clientVersion)
+            assertEquals(ShizukuProtocol.MINIMUM_VERSION, why.clientMinVersion)
+            assertTrue(why.serverTooOld)
+            assertFalse(why.clientTooOld)
+        }
+    }
+
+    @Test
+    fun aServerAtOrAboveTheFloorIsAccepted() {
+        for (version in listOf(13, 14)) {
+            val fake = FakeShizukuService()
+            fake.bindApplicationReply = FakeShizukuService.replyWithVersion(version)
+            val wire = ShizukuProtocolWire(fake, callbacks)
+
+            assertNull("version $version", wire.incompatibility(wire.attach(PACKAGE)))
+        }
     }
 
     @Test

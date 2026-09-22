@@ -27,7 +27,9 @@ kotlin {
 }
 
 dependencies {
-    api(project(":protocol"))
+    // Not api: no public signature of the SDK names a protocol type, so apps do not compile
+    // against the wire.
+    implementation(project(":protocol"))
 
     // Optional and non-transitive: only an app that declares PorterShizukuApiProvider needs it.
     compileOnly(project(":shizuku-compat"))

@@ -1,6 +1,7 @@
 package eu.darken.porter.sdk
 
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -8,6 +9,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.Dispatchers
 
 /** A collector that replaces the connection it is being told about and then fails. */
 @RunWith(RobolectricTestRunner::class)
@@ -15,6 +17,12 @@ import org.robolectric.annotation.Config
 internal class RedF11ThrowingListenerDuplicateUnlinkTest {
 
     private val observer = ConnectionObserver()
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
 
     @After
     fun teardown() {

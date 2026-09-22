@@ -15,6 +15,8 @@ import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 
 /** What the availability signal answers for each way a manager can be absent or present. */
 @RunWith(RobolectricTestRunner::class)
@@ -26,6 +28,8 @@ internal class PorterAvailabilityTest {
 
     @Before
     fun setup() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
         `when`(context.packageManager).thenReturn(packages)
         `when`(packages.getPermissionInfo(PorterProtocol.PERMISSION, 0))
             .thenThrow(PackageManager.NameNotFoundException())
@@ -49,61 +53,61 @@ internal class PorterAvailabilityTest {
     }
 
     @Test
-    fun nobodyDeclaringThePermissionMeansNothingIsInstalled() {
-        assertEquals(PorterAvailability.NOT_INSTALLED, Porter.availability(context))
+    fun nobodyDeclaringThePermissionMeansNothingIsInstalled() = runBlocking<Unit> {
+        assertEquals(PorterAvailability.NotInstalled, Porter.availability(context))
     }
 
     @Test
-    fun aForeignOwnerOfThePermissionIsReportedAsUnrecognized() {
+    fun aForeignOwnerOfThePermissionIsReportedAsUnrecognized() = runBlocking<Unit> {
         permissionOwnedBy("eu.darken.porter.impostor")
 
-        assertEquals(PorterAvailability.INSTALLED_UNRECOGNIZED, Porter.availability(context))
+        assertEquals(PorterAvailability.InstalledUnrecognized, Porter.availability(context))
     }
 
     @Test
-    fun theManagerWithoutABinderIsInstalledButNotConnected() {
+    fun theManagerWithoutABinderIsInstalledButNotConnected() = runBlocking<Unit> {
         permissionOwnedBy(PorterProtocol.MANAGER_APPLICATION_ID)
 
-        assertEquals(PorterAvailability.INSTALLED_NOT_CONNECTED, Porter.availability(context))
+        assertEquals(PorterAvailability.InstalledNotConnected, Porter.availability(context))
     }
 
     @Test
-    fun theShizukuManagerWithoutABinderIsInstalledButNotConnected() {
+    fun theShizukuManagerWithoutABinderIsInstalledButNotConnected() = runBlocking<Unit> {
         shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID)
 
-        assertEquals(PorterAvailability.INSTALLED_NOT_CONNECTED, Porter.availability(context))
+        assertEquals(PorterAvailability.InstalledNotConnected, Porter.availability(context))
     }
 
     @Test
-    fun aForeignOwnerOfTheShizukuPermissionIsReportedAsUnrecognized() {
+    fun aForeignOwnerOfTheShizukuPermissionIsReportedAsUnrecognized() = runBlocking<Unit> {
         shizukuPermissionOwnedBy("moe.shizuku.impostor")
 
-        assertEquals(PorterAvailability.INSTALLED_UNRECOGNIZED, Porter.availability(context))
+        assertEquals(PorterAvailability.InstalledUnrecognized, Porter.availability(context))
     }
 
     /** Porter is selected where both are installed, so the answer is about Porter's manager. */
     @Test
-    fun bothManagersInstalledAnswerAboutPorter() {
+    fun bothManagersInstalledAnswerAboutPorter() = runBlocking<Unit> {
         permissionOwnedBy("eu.darken.porter.impostor")
         shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID)
 
-        assertEquals(PorterAvailability.INSTALLED_UNRECOGNIZED, Porter.availability(context))
+        assertEquals(PorterAvailability.InstalledUnrecognized, Porter.availability(context))
     }
 
     /** Without the compatibility artifact no Shizuku binder can arrive, so none is waited for. */
     @Test
-    fun aShizukuManagerWithoutTheCompatibilityArtifactIsNotInstalled() {
+    fun aShizukuManagerWithoutTheCompatibilityArtifactIsNotInstalled() = runBlocking<Unit> {
         shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID)
         ShizukuCompat.setPresentForTest(false)
 
-        assertEquals(PorterAvailability.NOT_INSTALLED, Porter.availability(context))
+        assertEquals(PorterAvailability.NotInstalled, Porter.availability(context))
     }
 
     @Test
-    fun aBinderThatAnswersIsReportedWithoutAskingThePackageManager() {
+    fun aBinderThatAnswersIsReportedWithoutAskingThePackageManager() = runBlocking<Unit> {
         Porter.onBinderReceived(FakePorterService(), PACKAGE)
 
-        assertEquals(PorterAvailability.CONNECTED, Porter.availability(context))
+        assertEquals(PorterAvailability.Connected, Porter.availability(context))
         verifyNoInteractions(packages)
     }
 

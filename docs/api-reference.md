@@ -14,9 +14,9 @@ lifecycleScope.launch {
 }
 ```
 
-`Porter.availability(context)` says how far away the manager is when nothing is connected: `NOT_INSTALLED`, `INSTALLED_UNRECOGNIZED`, `INSTALLED_NOT_CONNECTED`, `INCOMPATIBLE` or `CONNECTED`. `INCOMPATIBLE` means a service answered and the two sides share no protocol version; `Porter.incompatibility` carries the version pair, with `serverTooOld` (update Porter) and `clientTooOld` (update this app's SDK). Versions are cumulative, so a newer peer on either side is never a reason by itself.
+`Porter.availability(context)` says how far away the manager is when nothing is connected: `NotInstalled`, `InstalledUnrecognized`, `InstalledNotConnected`, `Incompatible` or `Connected`. `Incompatible` means a service answered and the two sides share no protocol version; its `incompatibility` carries the version pair, on the scale of its `backend`, with `serverTooOld` (update the manager) and `clientTooOld` (update this app's SDK). Versions are cumulative, so a newer peer on either side is never a reason by itself.
 
-Every call on a `PorterConnection` goes to the server it was attached to, whichever connection `Porter.connection` holds by then. Once that server's binder has died, every call answers with `PorterRemoteException`. A connection that was replaced while its server is still running keeps serving calls to that server; what ends with the replacement is `requestPermission()`, which fails with `PorterConnectionLostException`, and its user service flows, which complete.
+Every call on a `PorterConnection` that reaches the server suspends and is safe on the main thread. It goes to the server the connection was attached to, whichever connection `Porter.connection` holds by then. A failed call throws a `PorterException`: `PorterSecurityException` when the server refused it, usually because this app has no grant, and `PorterRemoteException` when the Binder call failed, with a `DeadObjectException` cause once the server has died. A connection that was replaced while its server is still running keeps serving calls to that server; what ends with the replacement is `requestPermission()`, which fails with `PorterConnectionLostException`, and its user service flows, which complete.
 
 ### Request permission
 
@@ -49,7 +49,7 @@ What ADB can do is significantly different from ROOT:
 
 ### Remote binder call
 
-This is the simpler way, but what you can do is limited to Binder calls, so it suits simple applications. `connection.wrap(binder)` returns an `IBinder` whose every transaction is forwarded through the server:
+This is the simpler way, but what you can do is limited to Binder calls, so it suits simple applications. `connection.wrap(binder)` returns an `IBinder` whose every transaction is forwarded through the server. Those transactions block like any Binder call, so make them off the main thread. A refusal reaches the interface's own proxy as the platform exception it reads from the reply, such as `SecurityException`, not as a `PorterException`:
 
 ```kotlin
 val binder = PorterSystemServices.getSystemService("package") ?: return
@@ -81,7 +81,7 @@ Be aware that, to let the service use the latest code, "Run/Debug configurations
 
   The service class must implement `IBinder`; the usual shape is `class MyService : IMyService.Stub()`. It can have a default constructor or one taking a `Context`; the `Context` one is tried first. `userService(args, start = false)` binds only if the service is already running and completes without emitting otherwise. `peekUserService(args)` answers the running service's version code, or null, without binding.
 
-* Stop it: cancelling the collection drops this collector, and when the last collector of the same service identity (`tag`, else class name) on the same connection goes, the server is asked to drop the binding. The process is **not** killed by that. Implement a "destroy" method under transaction code `PorterProtocol.USER_SERVICE_TRANSACTION_destroy` (`16777115`, or `16777114` in aidl) that cleans up and calls `System.exit()`. That transaction is the only way a service is stopped: `connection.stopUserService(args)` sends it, and the server does not kill the process itself, so a service without the handler keeps running.
+* Stop it: cancelling the collection drops this collector, and when the last collector of the same service identity (`tag`, else class name) on the same connection goes, the server is asked to drop the binding. The process is **not** killed by that. A service ends when the app process that bound it dies, unless `UserServiceArgs.daemon` is true, and a daemon runs until it is stopped. Implement a "destroy" method under transaction code `UserServiceArgs.TRANSACTION_DESTROY` (`16777115`, or `16777114` in aidl) that cleans up and calls `System.exit()`. That transaction is how the server stops a service: `connection.stopUserService(args)` sends it, and the server does not kill the process itself, so a service without the handler keeps running.
 
 * Per user: the identity is scoped to the calling Android user. A work profile's copy of the app is served by its own process, started with that profile's uid.
 

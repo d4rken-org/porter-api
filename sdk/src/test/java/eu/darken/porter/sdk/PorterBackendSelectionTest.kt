@@ -15,6 +15,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.Dispatchers
 
 /** Which backend a process takes a delivery on, and what a delivery on the other one does. */
 @RunWith(RobolectricTestRunner::class)
@@ -49,6 +50,8 @@ internal class PorterBackendSelectionTest {
 
     @Before
     fun setup() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
         context = RuntimeEnvironment.getApplication()
     }
 

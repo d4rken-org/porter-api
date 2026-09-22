@@ -8,6 +8,7 @@ import eu.darken.porter.sdk.UserServiceTestSupport.idle
 import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
@@ -15,6 +16,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.Dispatchers
 
 /** One binder carries a death recipient per "connected" push, so its death is signalled repeatedly. */
 @RunWith(RobolectricTestRunner::class)
@@ -32,6 +34,12 @@ internal class RedDuplicateDeathRecipientTest {
 
         override fun unlinkToDeath(recipient: IBinder.DeathRecipient, flags: Int): Boolean =
             recipients.remove(recipient)
+    }
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
     }
 
     @After

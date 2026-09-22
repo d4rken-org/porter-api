@@ -9,19 +9,26 @@ import eu.darken.porter.sdk.UserServiceTestSupport.peek
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.Dispatchers
 
 /** A kill is a request to the server, not a local teardown: the death recipient still delivers. */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34], manifest = Config.NONE)
 internal class RedKillLeavesTheDeathToItsRecipientTest {
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
 
     @After
     fun teardown() {
@@ -68,7 +75,7 @@ internal class RedKillLeavesTheDeathToItsRecipientTest {
         val (collector, connection) = boundAndConnected(backgroundScope, args)
 
         fake.removeFailure = RuntimeException("the server refused")
-        assertThrows(RuntimeException::class.java) { connection().stopUserService(args) }
+        assertTrue(runCatching { connection().stopUserService(args) }.exceptionOrNull() is RuntimeException)
 
         val afterRefusal = peek(args)
         assertNotNull("a refused kill dropped the registrations of a service that is still running", afterRefusal)

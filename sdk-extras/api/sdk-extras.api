@@ -1,7 +1,7 @@
 public final class eu/darken/porter/sdk/extras/PorterSystemProperties {
-	public static final fun getSystemPropertyBoolean (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;Z)Z
-	public static final fun getSystemPropertyInt (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;I)I
-	public static final fun getSystemPropertyLong (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;J)J
+	public static final fun getSystemPropertyBoolean (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun getSystemPropertyInt (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun getSystemPropertyLong (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
 }
 
 public final class eu/darken/porter/sdk/extras/PorterSystemServices {

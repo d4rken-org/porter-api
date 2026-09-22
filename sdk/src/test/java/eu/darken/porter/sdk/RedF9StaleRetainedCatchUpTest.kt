@@ -2,6 +2,7 @@ package eu.darken.porter.sdk
 
 import java.util.concurrent.TimeUnit
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -10,6 +11,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLooper
+import kotlinx.coroutines.Dispatchers
 
 /** One of two stacked replacements fails while the other is still attaching. */
 @RunWith(RobolectricTestRunner::class)
@@ -17,6 +19,12 @@ import org.robolectric.shadows.ShadowLooper
 internal class RedF9StaleRetainedCatchUpTest {
 
     private val observer = ConnectionObserver()
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
 
     @After
     fun teardown() {
