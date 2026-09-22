@@ -24,6 +24,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowBinder
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 
 /** What the version pair in an attach reply decides: a connection, or a refusal that says why. */
 @RunWith(RobolectricTestRunner::class)
@@ -35,6 +37,8 @@ internal class PorterHandshakeTest {
 
     @Before
     fun setup() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
         `when`(context.packageManager).thenReturn(packages)
         `when`(packages.getPermissionInfo(ShizukuProtocol.PERMISSION, 0))
             .thenThrow(PackageManager.NameNotFoundException())
@@ -49,19 +53,19 @@ internal class PorterHandshakeTest {
     }
 
     @Test
-    fun aMatchedPairConnects() {
+    fun aMatchedPairConnects() = runBlocking<Unit> {
         val fake = FakePorterService()
 
         Porter.onBinderReceived(fake, PACKAGE)
 
         assertSame(fake, Porter.connection.value!!.binder)
-        assertNull(Porter.incompatibility)
-        assertEquals(PorterAvailability.CONNECTED, Porter.availability(context))
+        assertNull(Porter.incompatibility())
+        assertEquals(PorterAvailability.Connected, Porter.availability(context))
     }
 
     /** The server accepts this client but is itself older than what this SDK still speaks. */
     @Test
-    fun aServerBelowTheClientFloorIsRefusedAsTooOld() {
+    fun aServerBelowTheClientFloorIsRefusedAsTooOld() = runBlocking<Unit> {
         val fake = FakePorterService()
         fake.protocolVersion = PorterProtocolWire.MIN_SERVER_VERSION - 1
         fake.minProtocolVersion = 1
@@ -69,8 +73,10 @@ internal class PorterHandshakeTest {
         Porter.onBinderReceived(fake, PACKAGE)
 
         assertNull(Porter.connection.value)
-        assertEquals(PorterAvailability.INCOMPATIBLE, Porter.availability(context))
-        val why = assertRefused()
+        // The reason travels with the answer, so no second read can find it gone.
+        val why = (Porter.availability(context) as PorterAvailability.Incompatible).incompatibility
+        assertEquals(assertRefused(), why)
+        assertEquals(PorterBackend.PORTER, why.backend)
         assertTrue(why.serverTooOld)
         assertFalse(why.clientTooOld)
         assertEquals(PorterProtocolWire.MIN_SERVER_VERSION - 1, why.serverVersion)
@@ -80,7 +86,7 @@ internal class PorterHandshakeTest {
 
     /** The server refused this client outright: its floor is above what this SDK speaks. */
     @Test
-    fun aServerThatRefusesThisClientIsReportedAsClientTooOld() {
+    fun aServerThatRefusesThisClientIsReportedAsClientTooOld() = runBlocking<Unit> {
         val fake = FakePorterService()
         fake.protocolVersion = PorterProtocol.VERSION + 2
         fake.minProtocolVersion = PorterProtocol.VERSION + 1
@@ -89,7 +95,7 @@ internal class PorterHandshakeTest {
         Porter.onBinderReceived(fake, PACKAGE)
 
         assertNull(Porter.connection.value)
-        assertEquals(PorterAvailability.INCOMPATIBLE, Porter.availability(context))
+        assertTrue(Porter.availability(context) is PorterAvailability.Incompatible)
         val why = assertRefused()
         assertTrue(why.clientTooOld)
         assertFalse(why.serverTooOld)
@@ -121,7 +127,7 @@ internal class PorterHandshakeTest {
     }
 
     @Test
-    fun aNullReplyIsRefused() {
+    fun aNullReplyIsRefused() = runBlocking<Unit> {
         val fake = object : FakePorterService() {
             override fun attach(application: eu.darken.porter.server.IPorterApplication, args: Bundle): Bundle? = null
         }
@@ -129,7 +135,7 @@ internal class PorterHandshakeTest {
         Porter.onBinderReceived(fake, PACKAGE)
 
         assertNull(Porter.connection.value)
-        assertEquals(PorterAvailability.INCOMPATIBLE, Porter.availability(context))
+        assertTrue(Porter.availability(context) is PorterAvailability.Incompatible)
     }
 
     @Test
@@ -145,50 +151,50 @@ internal class PorterHandshakeTest {
 
     /** The refusal describes the last delivery only; the next one that connects supersedes it. */
     @Test
-    fun aCompatibleDeliveryClearsTheRefusal() {
+    fun aCompatibleDeliveryClearsTheRefusal() = runBlocking<Unit> {
         val old = FakePorterService()
         old.protocolVersion = 1
         Porter.onBinderReceived(old, PACKAGE)
-        assertEquals(PorterAvailability.INCOMPATIBLE, Porter.availability(context))
+        assertTrue(Porter.availability(context) is PorterAvailability.Incompatible)
 
         Porter.onBinderReceived(FakePorterService(), PACKAGE)
 
-        assertNull(Porter.incompatibility)
-        assertEquals(PorterAvailability.CONNECTED, Porter.availability(context))
+        assertNull(Porter.incompatibility())
+        assertEquals(PorterAvailability.Connected, Porter.availability(context))
     }
 
     @Test
-    fun aNullDeliveryClearsTheRefusal() {
+    fun aNullDeliveryClearsTheRefusal() = runBlocking<Unit> {
         val old = FakePorterService()
         old.protocolVersion = 1
         Porter.onBinderReceived(old, PACKAGE)
 
         Porter.onBinderReceived(null, PACKAGE)
 
-        assertNull(Porter.incompatibility)
-        assertEquals(PorterAvailability.INSTALLED_NOT_CONNECTED, Porter.availability(context))
+        assertNull(Porter.incompatibility())
+        assertEquals(PorterAvailability.InstalledNotConnected, Porter.availability(context))
     }
 
     /** A refused server that has since stopped is no longer running, incompatible or not. */
     @Test
-    fun aRefusedBinderThatDiedReadsAsNotConnected() {
+    fun aRefusedBinderThatDiedReadsAsNotConnected() = runBlocking<Unit> {
         val old = object : FakePorterService() {
             var alive = true
             override fun pingBinder(): Boolean = alive
         }
         old.protocolVersion = 1
         Porter.onBinderReceived(old, PACKAGE)
-        assertEquals(PorterAvailability.INCOMPATIBLE, Porter.availability(context))
+        assertTrue(Porter.availability(context) is PorterAvailability.Incompatible)
 
         old.alive = false
 
-        assertNull(Porter.incompatibility)
-        assertEquals(PorterAvailability.INSTALLED_NOT_CONNECTED, Porter.availability(context))
+        assertNull(Porter.incompatibility())
+        assertEquals(PorterAvailability.InstalledNotConnected, Porter.availability(context))
     }
 
     /** A newcomer that cannot be spoken to must not silence the connection still serving. */
     @Test
-    fun aRefusedDeliveryLeavesTheConnectionItCouldNotReplace() {
+    fun aRefusedDeliveryLeavesTheConnectionItCouldNotReplace() = runBlocking<Unit> {
         val serving = FakePorterService()
         Porter.onBinderReceived(serving, PACKAGE)
 
@@ -197,12 +203,12 @@ internal class PorterHandshakeTest {
         Porter.onBinderReceived(old, PACKAGE)
 
         assertSame(serving, Porter.connection.value!!.binder)
-        assertNull(Porter.incompatibility)
-        assertEquals(PorterAvailability.CONNECTED, Porter.availability(context))
+        assertNull(Porter.incompatibility())
+        assertEquals(PorterAvailability.Connected, Porter.availability(context))
     }
 
     private fun assertRefused(): PorterIncompatibility {
-        val why = Porter.incompatibility
+        val why = Porter.incompatibility()
         assertNotNull(why)
         return why!!
     }

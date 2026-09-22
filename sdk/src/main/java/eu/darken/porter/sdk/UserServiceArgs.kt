@@ -1,6 +1,7 @@
 package eu.darken.porter.sdk
 
 import android.content.ComponentName
+import eu.darken.porter.protocol.PorterProtocol
 
 /**
  * Which user service to reach and how the server should run it, as `Intent` is to a bound service.
@@ -17,7 +18,16 @@ public data class UserServiceArgs(
     val debuggable: Boolean = false,
     /**
      * A daemon service runs until it is stopped explicitly; a non-daemon one is stopped when the
-     * process that bound it dies. Daemon by default.
+     * process that bound it dies.
      */
-    val daemon: Boolean = true,
-)
+    val daemon: Boolean = false,
+) {
+
+    public companion object {
+        /**
+         * The transaction code the server sends a user service to ask it to shut down, on either
+         * backend: `16777114` as an aidl method id, which the generated stub offsets by one.
+         */
+        public const val TRANSACTION_DESTROY: Int = PorterProtocol.USER_SERVICE_TRANSACTION_destroy
+    }
+}

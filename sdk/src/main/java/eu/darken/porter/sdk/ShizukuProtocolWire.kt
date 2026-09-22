@@ -188,7 +188,7 @@ internal class ShizukuProtocolWire(
 
         val state = synchronized(lock) { checkNotNull(attachState) }
 
-        val reply = PorterWire.AttachReply(
+        return PorterWire.AttachReply(
             serverUid = state.getInt(BIND_APPLICATION_SERVER_UID, -1),
             protocolVersion = state.getInt(BIND_APPLICATION_SERVER_VERSION, 0),
             seLinuxContext = state.getString(BIND_APPLICATION_SERVER_SECONTEXT),
@@ -202,13 +202,14 @@ internal class ShizukuProtocolWire(
                 null
             },
         )
+    }
 
-        if (reply.protocolVersion < ShizukuProtocol.MINIMUM_VERSION) {
-            throw IllegalStateException(
-                "Shizuku protocol ${reply.protocolVersion} is below the minimum supported ${ShizukuProtocol.MINIMUM_VERSION}",
-            )
-        }
-        return reply
+    /** A server below [ShizukuProtocol.MINIMUM_VERSION] is refused rather than spoken to on an older encoding. */
+    override fun incompatibility(reply: PorterWire.AttachReply?): PorterIncompatibility? {
+        val version = reply?.protocolVersion ?: 0
+        if (reply != null && version >= ShizukuProtocol.MINIMUM_VERSION) return null
+        // The Shizuku wire names no oldest client, so only this side's floor can refuse.
+        return PorterIncompatibility(PorterBackend.SHIZUKU, serverVersion = version, serverMinVersion = 0)
     }
 
     override fun transactRemote(data: Parcel, reply: Parcel?, flags: Int) {
@@ -331,11 +332,16 @@ internal class ShizukuProtocolWire(
         try {
             data.writeInterfaceToken(DESCRIPTOR)
             arguments(data)
-            service.transact(code, data, reply, 0)
-            reply.readException()
+            try {
+                service.transact(code, data, reply, 0)
+                reply.readException()
+            } catch (e: RemoteException) {
+                throw PorterRemoteException(e)
+            } catch (e: SecurityException) {
+                // Raised by readException, which is where the server's refusal arrives.
+                throw PorterSecurityException(e)
+            }
             return result(reply)
-        } catch (e: RemoteException) {
-            throw PorterRemoteException(e)
         } finally {
             reply.recycle()
             data.recycle()

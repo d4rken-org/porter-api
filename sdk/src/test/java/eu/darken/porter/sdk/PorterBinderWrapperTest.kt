@@ -6,6 +6,7 @@ import android.os.Parcel
 import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.protocol.PorterProtocol.TRANSACTION_transactRemote
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -13,6 +14,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.Dispatchers
 
 /** The parcel a wrapped binder writes for the server to forward. */
 @RunWith(RobolectricTestRunner::class)
@@ -38,6 +40,12 @@ internal class PorterBinderWrapperTest {
             forwardedPayload = data.readInt()
             return true
         }
+    }
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
     }
 
     @After

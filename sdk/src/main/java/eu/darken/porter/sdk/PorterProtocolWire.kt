@@ -73,8 +73,8 @@ internal class PorterProtocolWire(
     }
 
     override fun incompatibility(reply: PorterWire.AttachReply?): PorterIncompatibility? {
-        if (reply == null) return PorterIncompatibility(serverVersion = 0, serverMinVersion = 0)
-        val mismatch = PorterIncompatibility(reply.protocolVersion, reply.minProtocolVersion)
+        if (reply == null) return PorterIncompatibility(PorterBackend.PORTER, serverVersion = 0, serverMinVersion = 0)
+        val mismatch = PorterIncompatibility(PorterBackend.PORTER, reply.protocolVersion, reply.minProtocolVersion)
         // A server that refused says so; one that did not is still held to this side's floor, and
         // one that reports no version at all cannot be told apart from one below it.
         val refused = reply.unsupported || reply.protocolVersion < MIN_SERVER_VERSION
@@ -136,10 +136,13 @@ internal class PorterProtocolWire(
         return remote { service.removeUserService(adapter, options) }
     }
 
+    /** A generated proxy raises a [SecurityException] only where the server wrote one into the reply. */
     private inline fun <T> remote(call: () -> T): T = try {
         call()
     } catch (e: RemoteException) {
         throw PorterRemoteException(e)
+    } catch (e: SecurityException) {
+        throw PorterSecurityException(e)
     }
 
     internal companion object {

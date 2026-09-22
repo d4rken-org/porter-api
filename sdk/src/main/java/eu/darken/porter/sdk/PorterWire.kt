@@ -46,8 +46,7 @@ internal interface PorterWire {
      * Why [reply] cannot be spoken to, or null when it can. A missing reply carries no version
      * metadata, and that alone is never enough to build a connection on.
      */
-    fun incompatibility(reply: AttachReply?): PorterIncompatibility? =
-        if (reply == null) PorterIncompatibility(serverVersion = 0, serverMinVersion = 0) else null
+    fun incompatibility(reply: AttachReply?): PorterIncompatibility?
 
     /**
      * Told from the death dispatch that the connection this wire speaks over is gone. A wire whose

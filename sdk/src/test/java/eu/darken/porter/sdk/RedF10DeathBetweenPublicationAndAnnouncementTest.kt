@@ -3,6 +3,7 @@ package eu.darken.porter.sdk
 import java.io.OutputStream
 import java.io.PrintStream
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -14,6 +15,7 @@ import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowBinder
 import org.robolectric.shadows.ShadowLog
 import org.robolectric.shadows.ShadowLooper
+import kotlinx.coroutines.Dispatchers
 
 /**
  * A connection that dies right after it is published. Publication and announcement are one step
@@ -45,6 +47,12 @@ internal class RedF10DeathBetweenPublicationAndAnnouncementTest {
     }
 
     private val observer = ConnectionObserver()
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
 
     @After
     fun teardown() {

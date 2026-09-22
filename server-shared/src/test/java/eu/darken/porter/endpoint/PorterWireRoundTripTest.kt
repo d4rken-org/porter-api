@@ -9,7 +9,9 @@ import eu.darken.porter.sdk.PorterConnection
 import eu.darken.porter.sdk.PorterUserServiceCodec
 import eu.darken.porter.sdk.UserServiceArgs
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -55,12 +57,13 @@ class PorterWireRoundTripTest {
 
         ShadowBinder.setCallingUid(CLIENT_UID)
         ShadowBinder.setCallingPid(CLIENT_PID)
+        // Server calls run inline, so the calling identity set above is the one the endpoint reads.
+        Porter.ioDispatcher = Dispatchers.Unconfined
     }
 
     @After
     fun teardown() {
-        // The public way to a process with no connection: a null delivery drops it.
-        Porter.onBinderReceived(null, PACKAGE)
+        Porter.resetForTest()
         ShadowBinder.reset()
     }
 
@@ -73,17 +76,17 @@ class PorterWireRoundTripTest {
         Porter.onBinderReceived(endpoint, PACKAGE)
 
         val connection = connection()
-        assertTrue(connection.isAlive)
+        assertTrue(runBlocking { connection.isAlive() })
         assertEquals(OsUtils.uid, connection.uid)
         assertEquals(PorterProtocol.VERSION, connection.serverInfo.version)
-        assertEquals(PermissionState.Granted, connection.checkPermission())
+        assertEquals(PermissionState.Granted, runBlocking { connection.checkPermission() })
     }
 
     @Test
     fun aClientWithoutAGrantIsToldSo() {
         Porter.onBinderReceived(endpoint, PACKAGE)
 
-        assertEquals(PermissionState.Denied(permanentlyDenied = false), connection().checkPermission())
+        assertEquals(PermissionState.Denied(permanentlyDenied = false), runBlocking { connection().checkPermission() })
     }
 
     @Test

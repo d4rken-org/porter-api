@@ -7,6 +7,7 @@ import eu.darken.porter.server.IPorterApplication
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -14,6 +15,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 
 /** A permission revoked while a replacement was attaching must not survive the rollback. */
 @RunWith(RobolectricTestRunner::class)
@@ -38,13 +41,19 @@ internal class RedF4RevokedPermissionTest {
         }
     }
 
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
+
     @After
     fun teardown() {
         Porter.resetForTest()
     }
 
     @Test
-    fun aRevocationDuringAFailedReplacementIsNotForgotten() {
+    fun aRevocationDuringAFailedReplacementIsNotForgotten() = runBlocking<Unit> {
         val serving = FakePorterService()
         serving.attachReply = permissionState(true, false)
         serving.selfPermission = false

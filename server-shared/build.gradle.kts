@@ -45,3 +45,16 @@ dependencies {
     implementation(libs.hidden.compat)
     compileOnly(libs.hidden.stub)
 }
+
+// The round trip drives the SDK through its internal delivery and codec, as the SDK's own tests
+// do, so the unit test compilations treat the SDK's compile jar as part of their own module.
+tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {
+    if (!name.endsWith("UnitTestKotlin")) return@configureEach
+    val variant = name.removePrefix("compile").removeSuffix("UnitTestKotlin").replaceFirstChar { it.lowercase() }
+    val bundleTask = "bundleLibCompileToJar" + variant.replaceFirstChar { it.uppercase() }
+    friendPaths.from(
+        project(":sdk").layout.buildDirectory.file(
+            "intermediates/compile_library_classes_jar/$variant/$bundleTask/classes.jar",
+        ),
+    )
+}

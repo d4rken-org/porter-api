@@ -70,6 +70,8 @@ suspend fun onPorterReady(connection: PorterConnection) {
 
 `permanentlyDenied` is "deny and don't ask again"; asking again is refused without a prompt.
 
+Every call that reaches Porter suspends and is safe on the main thread. A failed call throws a `PorterException`: `PorterSecurityException` when Porter refuses it, usually because access was not granted, and `PorterRemoteException` when the Binder call itself failed.
+
 ## Run your own code as shell or root
 
 Porter runs a class of yours in its own process, at its own identity.
@@ -103,7 +105,7 @@ connection.userService(args).collect { binder ->
 }
 ```
 
-`connection.uid` is `2000` for ADB and `0` for root. Stop the service with `connection.stopUserService(args)`.
+`connection.uid` is `2000` for ADB and `0` for root. The service stops when your app's process dies; set `daemon = true` to keep it running until you call `connection.stopUserService(args)`, which sends it `destroy`.
 
 ## Call a system service
 
@@ -124,12 +126,12 @@ Platform AIDL like `IPackageManager` is not in the public SDK, so this route nee
 ## Say why nothing happened
 
 ```kotlin
-when (Porter.availability(this)) {
-    PorterAvailability.CONNECTED -> Unit
-    PorterAvailability.INSTALLED_NOT_CONNECTED -> tell("Open Porter and start the service")
-    PorterAvailability.NOT_INSTALLED -> tell("Install Porter")
-    PorterAvailability.INSTALLED_UNRECOGNIZED -> tell("Another app owns Porter's permission")
-    PorterAvailability.INCOMPATIBLE -> if (Porter.incompatibility?.serverTooOld == true) {
+when (val availability = Porter.availability(this)) {
+    PorterAvailability.Connected -> Unit
+    PorterAvailability.InstalledNotConnected -> tell("Open Porter and start the service")
+    PorterAvailability.NotInstalled -> tell("Install Porter")
+    PorterAvailability.InstalledUnrecognized -> tell("Another app owns Porter's permission")
+    is PorterAvailability.Incompatible -> if (availability.incompatibility.serverTooOld) {
         tell("Update Porter")
     } else {
         tell("This app needs an update to work with this Porter")
@@ -137,7 +139,7 @@ when (Porter.availability(this)) {
 }
 ```
 
-Porter installed is not Porter running, so `INSTALLED_NOT_CONNECTED` is the normal state before the user starts it.
+Porter installed is not Porter running, so `InstalledNotConnected` is the normal state before the user starts it.
 
 ## More
 

@@ -22,7 +22,9 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.runBlocking
 import org.robolectric.shadows.ShadowContentResolver
+import kotlinx.coroutines.Dispatchers
 
 /** The receiving half of binder delivery: what the provider hands to [Porter] and back out. */
 @RunWith(RobolectricTestRunner::class)
@@ -34,6 +36,8 @@ internal class PorterApiProviderTest {
 
     @Before
     fun setup() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
         context = RuntimeEnvironment.getApplication()
         provider = attached(PorterApiProvider(), exported = true, multiprocess = false)
         // A server delivery is taken only on the selected backend, and nothing is installed here.
@@ -58,7 +62,7 @@ internal class PorterApiProviderTest {
 
     private fun shizukuDelivery(binder: IBinder): Bundle = Bundle().apply { ShizukuProtocolDelivery.writeBinder(this, binder) }
 
-    private val connected: Boolean get() = Porter.connection.value?.isAlive == true
+    private val connected: Boolean get() = runBlocking { Porter.connection.value?.isAlive() } == true
     private val binder: IBinder? get() = Porter.connection.value?.binder
     private val backend: PorterBackend? get() = Porter.connection.value?.backend
 

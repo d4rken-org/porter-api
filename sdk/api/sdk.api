@@ -25,40 +25,63 @@ public final class eu/darken/porter/sdk/PermissionStateKt {
 
 public final class eu/darken/porter/sdk/Porter {
 	public static final field INSTANCE Leu/darken/porter/sdk/Porter;
-	public final fun availability (Landroid/content/Context;)Leu/darken/porter/sdk/PorterAvailability;
+	public final fun availability (Landroid/content/Context;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun getConnection ()Lkotlinx/coroutines/flow/StateFlow;
-	public final fun getIncompatibility ()Leu/darken/porter/sdk/PorterIncompatibility;
-	public final fun onBinderReceived (Landroid/os/IBinder;Ljava/lang/String;)V
 }
 
-public class eu/darken/porter/sdk/PorterApiProvider : android/content/ContentProvider {
-	public static final field ACTION_BINDER_RECEIVED Ljava/lang/String;
+public final class eu/darken/porter/sdk/PorterApiProvider : android/content/ContentProvider {
 	public static final field Companion Leu/darken/porter/sdk/PorterApiProvider$Companion;
 	public fun <init> ()V
 	public fun attachInfo (Landroid/content/Context;Landroid/content/pm/ProviderInfo;)V
 	public fun call (Ljava/lang/String;Ljava/lang/String;Landroid/os/Bundle;)Landroid/os/Bundle;
-	public final fun delete (Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I
-	public final fun getType (Landroid/net/Uri;)Ljava/lang/String;
-	public final fun insert (Landroid/net/Uri;Landroid/content/ContentValues;)Landroid/net/Uri;
+	public fun delete (Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I
+	public fun getType (Landroid/net/Uri;)Ljava/lang/String;
+	public fun insert (Landroid/net/Uri;Landroid/content/ContentValues;)Landroid/net/Uri;
 	public fun onCreate ()Z
-	public final fun query (Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;
-	public final fun update (Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I
+	public fun query (Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;
+	public fun update (Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I
 }
 
 public final class eu/darken/porter/sdk/PorterApiProvider$Companion {
-	public final fun enableMultiProcessSupport (Z)V
 	public final fun requestBinderForNonProviderProcess (Landroid/content/Context;)V
 }
 
-public final class eu/darken/porter/sdk/PorterAvailability : java/lang/Enum {
-	public static final field CONNECTED Leu/darken/porter/sdk/PorterAvailability;
-	public static final field INCOMPATIBLE Leu/darken/porter/sdk/PorterAvailability;
-	public static final field INSTALLED_NOT_CONNECTED Leu/darken/porter/sdk/PorterAvailability;
-	public static final field INSTALLED_UNRECOGNIZED Leu/darken/porter/sdk/PorterAvailability;
-	public static final field NOT_INSTALLED Leu/darken/porter/sdk/PorterAvailability;
-	public static fun getEntries ()Lkotlin/enums/EnumEntries;
-	public static fun valueOf (Ljava/lang/String;)Leu/darken/porter/sdk/PorterAvailability;
-	public static fun values ()[Leu/darken/porter/sdk/PorterAvailability;
+public abstract interface class eu/darken/porter/sdk/PorterAvailability {
+}
+
+public final class eu/darken/porter/sdk/PorterAvailability$Connected : eu/darken/porter/sdk/PorterAvailability {
+	public static final field INSTANCE Leu/darken/porter/sdk/PorterAvailability$Connected;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class eu/darken/porter/sdk/PorterAvailability$Incompatible : eu/darken/porter/sdk/PorterAvailability {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIncompatibility ()Leu/darken/porter/sdk/PorterIncompatibility;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class eu/darken/porter/sdk/PorterAvailability$InstalledNotConnected : eu/darken/porter/sdk/PorterAvailability {
+	public static final field INSTANCE Leu/darken/porter/sdk/PorterAvailability$InstalledNotConnected;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class eu/darken/porter/sdk/PorterAvailability$InstalledUnrecognized : eu/darken/porter/sdk/PorterAvailability {
+	public static final field INSTANCE Leu/darken/porter/sdk/PorterAvailability$InstalledUnrecognized;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class eu/darken/porter/sdk/PorterAvailability$NotInstalled : eu/darken/porter/sdk/PorterAvailability {
+	public static final field INSTANCE Leu/darken/porter/sdk/PorterAvailability$NotInstalled;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class eu/darken/porter/sdk/PorterBackend : java/lang/Enum {
@@ -69,49 +92,38 @@ public final class eu/darken/porter/sdk/PorterBackend : java/lang/Enum {
 	public static fun values ()[Leu/darken/porter/sdk/PorterBackend;
 }
 
-public final class eu/darken/porter/sdk/PorterBinderWrapper : android/os/IBinder {
-	public fun <init> (Leu/darken/porter/sdk/PorterConnection;Landroid/os/IBinder;)V
-	public fun dump (Ljava/io/FileDescriptor;[Ljava/lang/String;)V
-	public fun dumpAsync (Ljava/io/FileDescriptor;[Ljava/lang/String;)V
-	public fun getInterfaceDescriptor ()Ljava/lang/String;
-	public fun isBinderAlive ()Z
-	public fun linkToDeath (Landroid/os/IBinder$DeathRecipient;I)V
-	public fun pingBinder ()Z
-	public fun queryLocalInterface (Ljava/lang/String;)Landroid/os/IInterface;
-	public fun transact (ILandroid/os/Parcel;Landroid/os/Parcel;I)Z
-	public fun unlinkToDeath (Landroid/os/IBinder$DeathRecipient;I)Z
-}
-
 public final class eu/darken/porter/sdk/PorterConnection {
-	public static final field TAG Ljava/lang/String;
-	public final fun checkPermission ()Leu/darken/porter/sdk/PermissionState;
-	public final fun checkRemotePermission (Ljava/lang/String;)Z
+	public final fun checkPermission (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun checkRemotePermission (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun getBackend ()Leu/darken/porter/sdk/PorterBackend;
 	public final fun getBinder ()Landroid/os/IBinder;
 	public final fun getPermission ()Lkotlinx/coroutines/flow/StateFlow;
 	public final fun getSeLinuxContext ()Ljava/lang/String;
 	public final fun getServerInfo ()Leu/darken/porter/sdk/PorterServerInfo;
-	public final fun getSystemProperty (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
-	public static synthetic fun getSystemProperty$default (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
+	public final fun getSystemProperty (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun getSystemProperty$default (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
 	public final fun getUid ()I
-	public final fun isAlive ()Z
-	public final fun peekUserService (Leu/darken/porter/sdk/UserServiceArgs;)Ljava/lang/Integer;
+	public final fun isAlive (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun peekUserService (Leu/darken/porter/sdk/UserServiceArgs;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun requestPermission (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public final fun setSystemProperty (Ljava/lang/String;Ljava/lang/String;)V
-	public final fun stopUserService (Leu/darken/porter/sdk/UserServiceArgs;)V
+	public final fun setSystemProperty (Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun stopUserService (Leu/darken/porter/sdk/UserServiceArgs;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun toString ()Ljava/lang/String;
-	public final fun transactRemote (Landroid/os/Parcel;Landroid/os/Parcel;I)V
 	public final fun userService (Leu/darken/porter/sdk/UserServiceArgs;Z)Lkotlinx/coroutines/flow/Flow;
 	public static synthetic fun userService$default (Leu/darken/porter/sdk/PorterConnection;Leu/darken/porter/sdk/UserServiceArgs;ZILjava/lang/Object;)Lkotlinx/coroutines/flow/Flow;
 	public final fun wrap (Landroid/os/IBinder;)Landroid/os/IBinder;
 }
 
-public final class eu/darken/porter/sdk/PorterConnectionLostException : java/lang/IllegalStateException {
-	public fun <init> ()V
+public final class eu/darken/porter/sdk/PorterConnectionLostException : eu/darken/porter/sdk/PorterException {
+}
+
+public abstract class eu/darken/porter/sdk/PorterException : java/lang/RuntimeException {
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;Lkotlin/jvm/internal/DefaultConstructorMarker;)V
 }
 
 public final class eu/darken/porter/sdk/PorterIncompatibility {
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBackend ()Leu/darken/porter/sdk/PorterBackend;
 	public final fun getClientMinVersion ()I
 	public final fun getClientTooOld ()Z
 	public final fun getClientVersion ()I
@@ -122,8 +134,10 @@ public final class eu/darken/porter/sdk/PorterIncompatibility {
 	public fun toString ()Ljava/lang/String;
 }
 
-public final class eu/darken/porter/sdk/PorterRemoteException : java/lang/RuntimeException {
-	public fun <init> (Landroid/os/RemoteException;)V
+public final class eu/darken/porter/sdk/PorterRemoteException : eu/darken/porter/sdk/PorterException {
+}
+
+public final class eu/darken/porter/sdk/PorterSecurityException : eu/darken/porter/sdk/PorterException {
 }
 
 public final class eu/darken/porter/sdk/PorterServerInfo {
@@ -141,18 +155,21 @@ public final class eu/darken/porter/sdk/PorterServerInfo {
 	public fun toString ()Ljava/lang/String;
 }
 
-public class eu/darken/porter/sdk/PorterShizukuApiProvider : eu/darken/porter/sdk/PorterApiProvider {
+public final class eu/darken/porter/sdk/PorterShizukuApiProvider : android/content/ContentProvider {
 	public fun <init> ()V
 	public fun attachInfo (Landroid/content/Context;Landroid/content/pm/ProviderInfo;)V
-}
-
-public final class eu/darken/porter/sdk/PorterUserServiceCodec {
-	public static final field INSTANCE Leu/darken/porter/sdk/PorterUserServiceCodec;
-	public final fun encodeUserService (Leu/darken/porter/sdk/UserServiceArgs;Z)Landroid/os/Bundle;
-	public final fun encodeUserServiceRemoval (Leu/darken/porter/sdk/UserServiceArgs;Z)Landroid/os/Bundle;
+	public fun call (Ljava/lang/String;Ljava/lang/String;Landroid/os/Bundle;)Landroid/os/Bundle;
+	public fun delete (Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I
+	public fun getType (Landroid/net/Uri;)Ljava/lang/String;
+	public fun insert (Landroid/net/Uri;Landroid/content/ContentValues;)Landroid/net/Uri;
+	public fun onCreate ()Z
+	public fun query (Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;
+	public fun update (Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I
 }
 
 public final class eu/darken/porter/sdk/UserServiceArgs {
+	public static final field Companion Leu/darken/porter/sdk/UserServiceArgs$Companion;
+	public static final field TRANSACTION_DESTROY I
 	public fun <init> (Landroid/content/ComponentName;Ljava/lang/String;Ljava/lang/String;IZZ)V
 	public synthetic fun <init> (Landroid/content/ComponentName;Ljava/lang/String;Ljava/lang/String;IZZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Landroid/content/ComponentName;
@@ -172,5 +189,8 @@ public final class eu/darken/porter/sdk/UserServiceArgs {
 	public final fun getVersion ()I
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class eu/darken/porter/sdk/UserServiceArgs$Companion {
 }
 

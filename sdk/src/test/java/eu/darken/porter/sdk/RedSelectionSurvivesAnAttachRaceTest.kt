@@ -27,6 +27,8 @@ import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowContentResolver
 import org.robolectric.shadows.ShadowLooper
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 
 /**
  * A cross-process fetch seeds the selection with [Porter.adoptBackend] and then attaches outside
@@ -87,6 +89,8 @@ internal class RedSelectionSurvivesAnAttachRaceTest {
 
     @Before
     fun setup() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
         context = RuntimeEnvironment.getApplication()
     }
 
@@ -103,7 +107,7 @@ internal class RedSelectionSurvivesAnAttachRaceTest {
     }
 
     @Test
-    fun anAvailabilityCallDuringTheFetchAttachDoesNotMoveTheSelectionOffThePublishedConnection() {
+    fun anAvailabilityCallDuringTheFetchAttachDoesNotMoveTheSelectionOffThePublishedConnection() = runBlocking<Unit> {
         // The provider process is connected on Shizuku. Porter was installed afterwards, so resolving
         // again now answers PORTER, which is what makes the two answers differ at all.
         declares(ShizukuProtocol.MANAGER_APPLICATION_ID, ShizukuProtocol.PERMISSION)

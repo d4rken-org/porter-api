@@ -2,6 +2,7 @@ package eu.darken.porter.sdk
 
 import java.util.concurrent.TimeUnit
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -12,6 +13,8 @@ import org.robolectric.annotation.Config
 import org.robolectric.shadow.api.Shadow
 import org.robolectric.shadows.ShadowBinder
 import org.robolectric.shadows.ShadowLooper
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 
 /** A collector that starts while a live connection is being replaced by one that dies. */
 @RunWith(RobolectricTestRunner::class)
@@ -20,6 +23,12 @@ internal class RedF8DeathRollbackStickyCatchUpTest {
 
     private val observer = ConnectionObserver()
 
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
+    }
+
     @After
     fun teardown() {
         observer.close()
@@ -27,7 +36,7 @@ internal class RedF8DeathRollbackStickyCatchUpTest {
     }
 
     @Test
-    fun aStickyListenerIsToldAboutTheConnectionADeathRolledBackTo() {
+    fun aStickyListenerIsToldAboutTheConnectionADeathRolledBackTo() = runBlocking<Unit> {
         val serving = FakePorterService()
         Porter.onBinderReceived(serving, PACKAGE)
 
@@ -57,7 +66,7 @@ internal class RedF8DeathRollbackStickyCatchUpTest {
         ShadowLooper.shadowMainLooper().idle()
 
         assertSame("the serving connection is not the one Porter answers for", serving, Porter.connection.value?.binder)
-        assertTrue("the serving connection does not answer", Porter.connection.value?.isAlive == true)
+        assertTrue("the serving connection does not answer", runBlocking { Porter.connection.value?.isAlive() } == true)
         assertEquals("the replacement's death was published over the live connection", listOf(serving), seen)
     }
 

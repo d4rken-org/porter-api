@@ -22,6 +22,8 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 
 /** The Shizuku envelope at the Shizuku authority, and the session a binder delivered there opens. */
 @RunWith(RobolectricTestRunner::class)
@@ -33,6 +35,8 @@ internal class PorterShizukuApiProviderTest {
 
     @Before
     fun setup() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
         context = RuntimeEnvironment.getApplication()
         provider = PorterShizukuApiProvider()
 
@@ -50,7 +54,7 @@ internal class PorterShizukuApiProviderTest {
         Porter.resetForTest()
     }
 
-    private val connected: Boolean get() = Porter.connection.value?.isAlive == true
+    private val connected: Boolean get() = runBlocking { Porter.connection.value?.isAlive() } == true
     private val binder: IBinder? get() = Porter.connection.value?.binder
 
     /**

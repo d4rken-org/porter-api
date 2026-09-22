@@ -9,6 +9,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
@@ -18,6 +19,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.Dispatchers
 
 /** The binder identity a user service binding presents to the server. */
 @RunWith(RobolectricTestRunner::class)
@@ -52,6 +55,12 @@ internal class PorterProtocolWireUserServiceTest {
 
         override fun died() {
         }
+    }
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
     }
 
     @After
@@ -92,7 +101,7 @@ internal class PorterProtocolWireUserServiceTest {
     }
 
     @Test
-    fun removingAndKillingNamesNoConnection() {
+    fun removingAndKillingNamesNoConnection() = runBlocking<Unit> {
         val fake = attached()
 
         connection().stopUserService(args("killed-binding"))

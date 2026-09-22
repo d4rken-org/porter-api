@@ -3,12 +3,14 @@ package eu.darken.porter.sdk
 import android.os.Bundle
 import eu.darken.porter.server.IPorterApplication
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import kotlinx.coroutines.Dispatchers
 
 /** What a reader sees in the connection flow while an attach is still running, and after one that went nowhere. */
 @RunWith(RobolectricTestRunner::class)
@@ -26,6 +28,12 @@ internal class PorterReadinessTest {
             read = true
             return super.attach(application, args)
         }
+    }
+
+    @Before
+    fun inlineServerCalls() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
     }
 
     @After

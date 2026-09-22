@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import java.util.concurrent.Executor
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
@@ -19,6 +20,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.shadows.ShadowApplication
 import org.robolectric.shadows.ShadowContentResolver
 import org.robolectric.shadows.ShadowLooper
 
@@ -40,9 +42,14 @@ internal class RedDeathDispatchOrderingHandlerTest {
 
     @Before
     fun setup() {
+        // Server calls run inline, so each step below has happened when the next one asserts.
+        Porter.ioDispatcher = Dispatchers.Unconfined
         context = RuntimeEnvironment.getApplication()
-        // This process hosts no provider, so the SDK's built-in fetches are all it has.
-        PorterApiProvider.enableMultiProcessSupport(false)
+        // This process hosts no provider, so the SDK's built-in fetches are all it has; they run
+        // inline, where the assertions can see them.
+        Porter.deliveryExecutor = Executor { it.run() }
+        // The test app declares the SDK's provider in its own process; this one is another.
+        ShadowApplication.setProcessName(context.packageName + ":secondary")
         ShadowContentResolver.registerProviderInternal(
             context.packageName + PorterProtocolDelivery.authoritySuffix,
             ProviderProcessStandIn(providerProcessBinder),
