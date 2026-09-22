@@ -431,7 +431,12 @@ public class PorterConnection internal constructor(
         return result.takeIf { it != USER_SERVICE_RESULT_NOT_RUNNING }
     }
 
-    /** Kills the user service process. Collectors of [userService] see the flow complete. */
+    /**
+     * Asks the service to stop, by sending it
+     * [eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_TRANSACTION_destroy]. The server does
+     * not kill the process, so a service that does not implement that transaction keeps running.
+     * Collectors of [userService] see the flow complete either way.
+     */
     public fun stopUserService(args: UserServiceArgs) {
         wire.removeUserService(null, args, remove = true)
     }
