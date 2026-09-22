@@ -27,19 +27,20 @@ public final class eu/darken/porter/sdk/Porter {
 	public static final field INSTANCE Leu/darken/porter/sdk/Porter;
 	public final fun availability (Landroid/content/Context;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun getConnection ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun onBinderReceived (Landroid/os/IBinder;Ljava/lang/String;)V
 }
 
-public final class eu/darken/porter/sdk/PorterApiProvider : android/content/ContentProvider {
+public class eu/darken/porter/sdk/PorterApiProvider : android/content/ContentProvider {
 	public static final field Companion Leu/darken/porter/sdk/PorterApiProvider$Companion;
 	public fun <init> ()V
-	public fun attachInfo (Landroid/content/Context;Landroid/content/pm/ProviderInfo;)V
+	public final fun attachInfo (Landroid/content/Context;Landroid/content/pm/ProviderInfo;)V
 	public fun call (Ljava/lang/String;Ljava/lang/String;Landroid/os/Bundle;)Landroid/os/Bundle;
-	public fun delete (Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I
-	public fun getType (Landroid/net/Uri;)Ljava/lang/String;
-	public fun insert (Landroid/net/Uri;Landroid/content/ContentValues;)Landroid/net/Uri;
-	public fun onCreate ()Z
-	public fun query (Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;
-	public fun update (Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I
+	public final fun delete (Landroid/net/Uri;Ljava/lang/String;[Ljava/lang/String;)I
+	public final fun getType (Landroid/net/Uri;)Ljava/lang/String;
+	public final fun insert (Landroid/net/Uri;Landroid/content/ContentValues;)Landroid/net/Uri;
+	public final fun onCreate ()Z
+	public final fun query (Landroid/net/Uri;[Ljava/lang/String;Ljava/lang/String;[Ljava/lang/String;Ljava/lang/String;)Landroid/database/Cursor;
+	public final fun update (Landroid/net/Uri;Landroid/content/ContentValues;Ljava/lang/String;[Ljava/lang/String;)I
 }
 
 public final class eu/darken/porter/sdk/PorterApiProvider$Companion {

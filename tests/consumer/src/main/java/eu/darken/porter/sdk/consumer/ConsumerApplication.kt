@@ -7,9 +7,9 @@ import eu.darken.porter.sdk.isGranted
 
 class ConsumerApplication : Application() {
 
-    fun hasAccess(): Boolean {
+    suspend fun hasAccess(): Boolean {
         val connection = Porter.connection.value ?: return false
-        return connection.isAlive && connection.permission.value.isGranted
+        return connection.isAlive() && connection.permission.value.isGranted
     }
 
     fun wrap(binder: IBinder): IBinder? = Porter.connection.value?.wrap(binder)

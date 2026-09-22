@@ -32,23 +32,26 @@ import java.util.concurrent.atomic.AtomicBoolean
  * the app starts.
  *
  * If the app runs in several processes, see [requestBinderForNonProviderProcess].
+ *
+ * A subclass can answer further methods in [call] and hand the rest to `super.call`; nothing else
+ * can be overridden.
  */
-public class PorterApiProvider : ContentProvider() {
+public open class PorterApiProvider : ContentProvider() {
 
     private val endpoint = DeliveryEndpoint(PorterProtocolDelivery)
 
-    override fun attachInfo(context: Context, info: ProviderInfo) {
+    final override fun attachInfo(context: Context, info: ProviderInfo) {
         super.attachInfo(context, info)
         endpoint.attached(info)
     }
 
-    override fun onCreate(): Boolean = true
+    final override fun onCreate(): Boolean = true
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? =
         endpoint.call(requireContext(), method, extras)
 
     // no other provider methods
-    override fun query(
+    final override fun query(
         uri: Uri,
         projection: Array<String>?,
         selection: String?,
@@ -56,13 +59,13 @@ public class PorterApiProvider : ContentProvider() {
         sortOrder: String?,
     ): Cursor? = null
 
-    override fun getType(uri: Uri): String? = null
+    final override fun getType(uri: Uri): String? = null
 
-    override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+    final override fun insert(uri: Uri, values: ContentValues?): Uri? = null
 
-    override fun delete(uri: Uri, selection: String?, selectionArgs: Array<String>?): Int = 0
+    final override fun delete(uri: Uri, selection: String?, selectionArgs: Array<String>?): Int = 0
 
-    override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<String>?): Int = 0
+    final override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<String>?): Int = 0
 
     public companion object {
 
