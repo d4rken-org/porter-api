@@ -126,15 +126,17 @@ Platform AIDL like `IPackageManager` is not in the public SDK, so this route nee
 ## Say why nothing happened
 
 ```kotlin
-when (val availability = Porter.availability(this)) {
-    PorterAvailability.Connected -> Unit
-    PorterAvailability.InstalledNotConnected -> tell("Open Porter and start the service")
-    PorterAvailability.NotInstalled -> tell("Install Porter")
-    PorterAvailability.InstalledUnrecognized -> tell("Another app owns Porter's permission")
-    is PorterAvailability.Incompatible -> if (availability.incompatibility.serverTooOld) {
-        tell("Update Porter")
-    } else {
-        tell("This app needs an update to work with this Porter")
+lifecycleScope.launch {
+    when (val availability = Porter.availability(this@MainActivity)) {
+        PorterAvailability.Connected -> Unit
+        PorterAvailability.InstalledNotConnected -> tell("Open Porter and start the service")
+        PorterAvailability.NotInstalled -> tell("Install Porter")
+        PorterAvailability.InstalledUnrecognized -> tell("Another app owns Porter's permission")
+        is PorterAvailability.Incompatible -> if (availability.incompatibility.serverTooOld) {
+            tell("Update Porter")
+        } else {
+            tell("This app needs an update to work with this Porter")
+        }
     }
 }
 ```

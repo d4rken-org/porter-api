@@ -7,6 +7,8 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.RemoteException
 import android.util.Log
+import androidx.annotation.RestrictTo
+import androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX
 import androidx.annotation.VisibleForTesting
 import eu.darken.porter.protocol.PorterProtocol
 import java.util.concurrent.Executor
@@ -106,10 +108,11 @@ public object Porter {
 
     // --------------------- delivery ----------------------
 
-    /** Announces a binder that speaks Porter's own wire. */
-    internal fun onBinderReceived(newBinder: IBinder?, packageName: String): Boolean {
+    /** Announces a binder that speaks Porter's own wire, for a process that received it outside the provider. */
+    @RestrictTo(LIBRARY_GROUP_PREFIX)
+    public fun onBinderReceived(newBinder: IBinder?, packageName: String) {
         // No Context to select with, and nothing to select: this wire is Porter's by construction.
-        return onBinderReceived(newBinder, packageName, PorterBackend.PORTER, selected = null)
+        onBinderReceived(newBinder, packageName, PorterBackend.PORTER, selected = null)
     }
 
     /**
