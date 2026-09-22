@@ -1,12 +1,12 @@
 # Porter API
 
-The Android SDK for [Porter](https://github.com/d4rken-org/porter), a minimal, maintained Shizuku fork that gives apps ADB access, with optional root support.
-
-This repository contains the client SDK and the shared API source used by the Porter app. The SDK is Kotlin-first: one `StateFlow` for the connection, `suspend` for the permission prompt, a `Flow` for a user service. It builds on [Shizuku-API](https://github.com/thedjchi/Shizuku-API) and preserves the Shizuku Binder protocol on the wire, so apps can support Porter directly without requiring Porter Compatibility and can retain support for Shizuku.
+The Android SDK for [Porter](https://github.com/d4rken-org/porter), a minimal, maintained Shizuku fork that gives apps ADB access, with optional root support. It builds on [Shizuku-API](https://github.com/thedjchi/Shizuku-API) and keeps the Shizuku Binder protocol on the wire, so an app can add Porter support and keep its Shizuku support.
 
 ## Add to your app
 
-Requires Android 7.0 (API 24) or newer. Add JitPack in `settings.gradle.kts`:
+Requires Android 7.0 (API 24) or newer. The SDK is coroutines and `Flow` throughout; use from Java is not supported.
+
+Add JitPack in `settings.gradle.kts`:
 
 ```kotlin
 dependencyResolutionManagement {
@@ -20,30 +20,130 @@ dependencyResolutionManagement {
 }
 ```
 
-Then add:
+Then in your module's `build.gradle.kts`:
 
 ```kotlin
-implementation("com.github.d4rken-org.porter-api:sdk:0.2.0")
+implementation("com.github.d4rken-org.porter-api:sdk:+")
 ```
 
-The SDK is written for Kotlin callers and depends on `kotlinx-coroutines`; it makes no promises about use from Java. While the SDK is `0.x` it promises source compatibility only: the public value types (`UserServiceArgs`, `PermissionState.Denied`, `PorterServerInfo`) are Kotlin data classes, and a field added to one changes its constructor and `copy` signatures, so a library built against an earlier `0.x` has to be rebuilt against the new one rather than only run against it. It speaks Porter's own protocol and contains only `eu.darken.porter.*` classes. It does not include or conflict with the upstream `dev.rikka.shizuku` SDK, which an app can keep alongside it for original Shizuku support.
+Pinning a version from the [releases page](https://github.com/d4rken-org/porter-api/releases) is recommended.
 
-The SDK declares Porter's permission, `eu.darken.porter.permission.API`, in its own manifest. When it connects, the SDK and the service name the protocol version each speaks and the oldest one each still accepts; a newer peer is fine, and where the two do not overlap no connection is published, `Porter.availability(context)` answers `INCOMPATIBLE` and `Porter.incompatibility` says which side has to update. User services are per Android user: a work profile's copy of an app gets its own service process, started with that profile's uid.
+Nothing to add to your manifest: the SDK brings its own permission, package visibility entry and provider.
 
-The separate `shizuku-compat` artifact supplies the same `moe.shizuku.api.BinderContainer` class that `dev.rikka.shizuku:provider` ships. Two copies of that class name on one classpath do not dex, so the two artifacts are mutually exclusive, including when one of them arrives transitively through another library. An app that already uses the upstream provider must not add `shizuku-compat`. Adding it on its own does not connect your app to Shizuku either. The SDK declares nothing at the Shizuku authority, so an app that wants that backend also declares the `PorterShizukuApiProvider` block itself, with the `moe.shizuku.manager.permission.API_V23` permission and the `moe.shizuku.client.V3_SUPPORT` meta-data a server requires; the class documents the block. `shizuku-compat` is required for that backend. The backend is chosen by what is installed, not by what is running: an installed Porter always wins, so a Porter that is installed but stopped blocks a running Shizuku, and a process holding a live connection never switches backend until that connection dies.
+## Connect
 
-The optional `sdk-extras` artifact carries two conveniences that the SDK itself leaves out. Typed system property getters (`getSystemPropertyInt`, `getSystemPropertyLong`, `getSystemPropertyBoolean`) are extension functions on a connection and reach the server. `PorterSystemServices` looks up a system service binder inside your own process, with no round trip to the server. It depends on `sdk` and brings it transitively, so an app adds this instead of both:
+`Porter.connection` is null until Porter delivers a Binder, and carries a new one whenever the user restarts Porter. Collect it rather than reading it once.
 
 ```kotlin
-implementation("com.github.d4rken-org.porter-api:sdk-extras:0.2.0")
+class MainActivity : ComponentActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                Porter.connection.collect { connection ->
+                    if (connection != null) onPorterReady(connection)
+                }
+            }
+        }
+    }
+}
 ```
 
-`PorterSystemServices.getSystemService` answers null only when no service goes by the name it was given, and throws `IllegalStateException` when the lookup itself cannot be performed.
+## Ask for permission
 
-Follow the [integration guide](https://porter.darken.eu/developers) to request access from your app. Adding the dependency alone does not connect your app to Porter.
+A connection is not access. `requestPermission()` shows Porter's dialog and suspends until the user answers.
 
-- [API reference and upstream history](docs/api-reference.md)
-- [User setup guide](https://porter.darken.eu/setup)
+```kotlin
+suspend fun onPorterReady(connection: PorterConnection) {
+    var state = connection.checkPermission()
+    if (state is PermissionState.Denied && !state.permanentlyDenied) {
+        state = try {
+            connection.requestPermission()
+        } catch (e: PorterConnectionLostException) {
+            return // Porter restarted while the dialog was up; the next connection arrives on the flow
+        }
+    }
+    if (state is PermissionState.Granted) doPrivilegedWork(connection)
+}
+```
+
+`permanentlyDenied` is "deny and don't ask again"; asking again is refused without a prompt.
+
+## Run your own code as shell or root
+
+Porter runs a class of yours in its own process, at its own identity.
+
+```aidl
+// IMyService.aidl
+interface IMyService {
+    void destroy() = 16777114; // Porter sends this to stop the service
+    String readFile(String path);
+}
+```
+
+```kotlin
+class MyService : IMyService.Stub() {
+    override fun destroy() = exitProcess(0)
+    override fun readFile(path: String): String = File(path).readText()
+}
+```
+
+```kotlin
+val args = UserServiceArgs(
+    componentName = ComponentName(this, MyService::class.java),
+    processNameSuffix = "service",
+    tag = "my-service", // stable across obfuscation; the class name is used otherwise
+    version = 1,        // bump when the service code changes
+)
+
+connection.userService(args).collect { binder ->
+    val service = IMyService.Stub.asInterface(binder)
+    service.readFile("/proc/net/tcp") // readable as shell, not from your app's own process
+}
+```
+
+`connection.uid` is `2000` for ADB and `0` for root. Stop the service with `connection.stopUserService(args)`.
+
+## Call a system service
+
+`connection.wrap(binder)` re-issues every transaction on a system service Binder at Porter's identity. The lookup needs `sdk-extras`, which brings `sdk` with it:
+
+```kotlin
+implementation("com.github.d4rken-org.porter-api:sdk-extras:+")
+```
+
+```kotlin
+val binder = PorterSystemServices.getSystemService("package") ?: return
+val pm = IPackageManager.Stub.asInterface(connection.wrap(binder))
+pm.getInstalledPackages(0, 0)
+```
+
+Platform AIDL like `IPackageManager` is not in the public SDK, so this route needs compile-time stubs and a way past the non-SDK interface restrictions. The user service above needs neither.
+
+## Say why nothing happened
+
+```kotlin
+when (Porter.availability(this)) {
+    PorterAvailability.CONNECTED -> Unit
+    PorterAvailability.INSTALLED_NOT_CONNECTED -> tell("Open Porter and start the service")
+    PorterAvailability.NOT_INSTALLED -> tell("Install Porter")
+    PorterAvailability.INSTALLED_UNRECOGNIZED -> tell("Another app owns Porter's permission")
+    PorterAvailability.INCOMPATIBLE -> if (Porter.incompatibility?.serverTooOld == true) {
+        tell("Update Porter")
+    } else {
+        tell("This app needs an update to work with this Porter")
+    }
+}
+```
+
+Porter installed is not Porter running, so `INSTALLED_NOT_CONNECTED` is the normal state before the user starts it.
+
+## More
+
+- [Integration guide](https://porter.darken.eu/developers): the Shizuku backend, multi-process apps, versioning.
+- [API reference](docs/api-reference.md): the full Kotlin surface.
+- [User setup guide](https://porter.darken.eu/setup) to link your users to.
 
 ## License
 
