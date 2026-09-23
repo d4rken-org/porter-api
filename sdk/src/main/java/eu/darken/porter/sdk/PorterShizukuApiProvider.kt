@@ -13,8 +13,9 @@ import android.os.Bundle
  * authority than [PorterApiProvider]'s.
  *
  * [Porter.availability] describes this backend on a device that selects it: no package declares
- * Porter's permission, one declares Shizuku's, and the `shizuku-compat` artifact below is on the
- * classpath. Without that artifact the answer stays [PorterAvailability.NotInstalled].
+ * Porter's permission, one declares Shizuku's or Shizuku+'s, and the `shizuku-compat` artifact below
+ * is on the classpath. Without that artifact the answer stays [PorterAvailability.NotInstalled].
+ * Shizuku+ takes the same block below, which requests the stock permission.
  *
  * The SDK declares nothing at that authority. An app that wants Shizuku delivery adds the whole
  * block itself, the permission and the meta-data included: the server refuses an app that requests
