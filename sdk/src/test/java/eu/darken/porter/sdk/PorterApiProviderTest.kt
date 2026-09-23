@@ -71,6 +71,7 @@ internal class PorterApiProviderTest {
      * one has them. A secondary process reaches whichever of the two the server delivered to.
      */
     private fun bothAuthorities(): PorterShizukuApiProvider {
+        declareShizukuProvider(context)
         ShadowContentResolver.registerProviderInternal(context.packageName + PROVIDER_AUTHORITY_SUFFIX, provider)
 
         val shizuku = PorterShizukuApiProvider()
@@ -163,6 +164,17 @@ internal class PorterApiProviderTest {
 
         assertSame(fake, binder)
         assertEquals(PorterBackend.SHIZUKU, backend)
+    }
+
+    /** Upstream's provider at that authority answers in its own terms, so it is not asked. */
+    @Test
+    fun aSecondaryProcessDoesNotAskAnotherProviderAtTheShizukuAuthority() {
+        Porter.selectBackendForTest(Porter.Selection.SHIZUKU)
+        val shizuku = bothAuthorities()
+        declareShizukuProvider(context, "rikka.shizuku.ShizukuProvider")
+        shizuku.call(DELIVERY_METHOD_SEND_BINDER, null, shizukuDelivery(FakeShizukuService()))
+
+        assertFalse(PorterApiProvider.fetchBinderFromProvider(context))
     }
 
     @Test

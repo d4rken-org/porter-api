@@ -7,10 +7,9 @@ import moe.shizuku.api.BinderContainer
 /** Shizuku's envelope: the binder travels inside a [BinderContainer] Parcelable. */
 internal object ShizukuProtocolDelivery : PorterDelivery {
 
-    private const val AUTHORITY_SUFFIX = ".shizuku"
     private const val EXTRA_BINDER = "moe.shizuku.privileged.api.intent.extra.BINDER"
 
-    override val authoritySuffix: String = AUTHORITY_SUFFIX
+    override val authoritySuffix: String = ShizukuCompat.AUTHORITY_SUFFIX
 
     override val backend: PorterBackend = PorterBackend.SHIZUKU
 

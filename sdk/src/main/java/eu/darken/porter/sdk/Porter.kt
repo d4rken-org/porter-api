@@ -446,9 +446,8 @@ public object Porter {
 
     private fun resolve(context: Context): Selection {
         if (owner(context, PorterBackend.PORTER) != null) return Selection.PORTER
-        // Without the compat artifact no Shizuku binder can be unwrapped, so a Shizuku server this
-        // app cannot receive from is not a backend to wait for.
-        if (ShizukuCompat.isPresent() && owner(context, PorterBackend.SHIZUKU) != null) {
+        // A Shizuku server this app cannot receive from is not a backend to wait for.
+        if (ShizukuCompat.canReceive(context) && owner(context, PorterBackend.SHIZUKU) != null) {
             return Selection.SHIZUKU
         }
         return Selection.NONE
@@ -506,7 +505,7 @@ public object Porter {
         }
         ioDispatcher = defaultIoDispatcher
         deliveryExecutor = defaultDeliveryExecutor
-        ShizukuCompat.setPresentForTest(null)
+        ShizukuCompat.resetForTest()
         PorterApiProvider.resetForTest()
     }
 }

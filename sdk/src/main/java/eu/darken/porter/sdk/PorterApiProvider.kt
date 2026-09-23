@@ -186,8 +186,9 @@ public open class PorterApiProvider : ContentProvider() {
         internal fun fetchBinderFromProvider(context: Context): Boolean {
             if (fetchThrough(context, PorterProtocolDelivery)) return true
             // ShizukuProtocolDelivery names the container as a type, so the class cannot load at all
-            // where the optional artifact is absent.
-            return ShizukuCompat.isPresent() && fetchThrough(context, ShizukuProtocolDelivery)
+            // where the optional artifact is absent, and another library's provider at that authority
+            // answers in its own terms.
+            return ShizukuCompat.canReceive(context) && fetchThrough(context, ShizukuProtocolDelivery)
         }
 
         internal fun fetchThrough(context: Context, delivery: PorterDelivery): Boolean {

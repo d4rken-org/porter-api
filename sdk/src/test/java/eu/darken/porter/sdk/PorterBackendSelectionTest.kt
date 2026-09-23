@@ -53,6 +53,7 @@ internal class PorterBackendSelectionTest {
         // Server calls run inline, so each step below has happened when the next one asserts.
         Porter.ioDispatcher = Dispatchers.Unconfined
         context = RuntimeEnvironment.getApplication()
+        declareShizukuProvider(context)
     }
 
     @After
@@ -163,6 +164,20 @@ internal class PorterBackendSelectionTest {
         assertNull(binder())
         assertEquals(0, ignored.attachCount)
         assertEquals(0, ignored.deathLinks)
+    }
+
+    /** An app that keeps upstream's client gives the authority to upstream's provider. */
+    @Test
+    fun shizukuWithAnotherProviderAtItsAuthoritySelectsNothing() {
+        shizukuIsInstalled()
+        declareShizukuProvider(context, "rikka.shizuku.ShizukuProvider")
+
+        assertEquals(Porter.Selection.NONE, Porter.selectBackend(context))
+
+        val ignored = deliverShizuku()
+
+        assertNull(binder())
+        assertEquals(0, ignored.attachCount)
     }
 
     @Test
