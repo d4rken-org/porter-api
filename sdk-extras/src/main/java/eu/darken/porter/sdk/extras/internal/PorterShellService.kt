@@ -53,23 +53,23 @@ internal class PorterShellService : IPorterShellService.Stub() {
         const val SETSID = "/system/bin/setsid"
 
         /**
-         * Kills [process] and, where it leads its own group, everything in that group. A child that
-         * made a session of its own is out of reach.
+         * Sends SIGKILL to [process] and, where it leads its own group, to everything in that group.
+         * A child that made a session of its own is out of reach.
          */
         fun kill(process: Process, grouped: Boolean) {
-            val pid = if (grouped) pidOf(process) else null
+            val pid = pidOf(process)
             if (pid != null) {
                 try {
-                    Os.kill(-pid, OsConstants.SIGKILL)
+                    Os.kill(if (grouped) -pid else pid, OsConstants.SIGKILL)
                 } catch (e: ErrnoException) {
-                    // The group is already gone.
+                    // Gone already, or not ours to kill; Process.destroy() below is all that is left.
                 }
             }
             process.destroy()
         }
 
         /** `Process[pid=123, hasExited=false]` on Android, `Process[pid=123, exitValue=...]` on a JDK. */
-        private fun pidOf(process: Process): Int? =
+        fun pidOf(process: Process): Int? =
             Regex("""pid=(\d+)""").find(process.toString())?.groupValues?.get(1)?.toIntOrNull()
     }
 }
@@ -84,6 +84,8 @@ internal class ShellProcess(
     private val ownerDied = IBinder.DeathRecipient { destroy() }
 
     private val exited = CountDownLatch(1)
+
+    private val pid: Int? = PorterShellService.pidOf(process)
 
     private var stdin: ParcelFileDescriptor? = null
     private var stdout: ParcelFileDescriptor? = null
@@ -138,6 +140,23 @@ internal class ShellProcess(
     override fun exitValue(): Int {
         check(!alive()) { "the process has not exited" }
         return process.exitValue()
+    }
+
+    override fun pid(): Int = pid ?: -1
+
+    override fun signal(signal: Int) {
+        if (!alive()) return
+        val pid = checkNotNull(pid) { "the process id is unknown" }
+        try {
+            Os.kill(pid, signal)
+        } catch (e: ErrnoException) {
+            when (e.errno) {
+                OsConstants.ESRCH -> Unit // exited since the check above
+                OsConstants.EINVAL -> throw IllegalArgumentException("not a signal: $signal")
+                // Such as EPERM, once the command changed identity.
+                else -> throw IllegalStateException(e.message)
+            }
+        }
     }
 
     override fun destroy() {

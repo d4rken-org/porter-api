@@ -87,13 +87,46 @@ Be aware that, to let the service use the latest code, "Run/Debug configurations
 
 ### Shell commands
 
-`sdk-extras` runs a command at the server's identity through a user service it ships, `com.example:porter_shell`, on either backend. `connection.exec(context, vararg command, dir)` returns a `PorterShellResult` with `exitCode`, `output` and `errors`, the last two read as UTF-8, once the command exits; the command's input is closed. `connection.startProcess(context, vararg command, dir)` returns a `java.lang.Process` whose streams are pipes to the running command, for input, binary output or a command that runs until `destroy()`. Read its output as it arrives, or the command blocks once a pipe is full.
+`sdk-extras` runs a command at the server's identity through a user service it ships, `com.example:porter_shell`, on either backend. `connection.exec(vararg command, dir)` returns a `PorterShellResult` with `exitCode`, `output` and `errors`, the last two read as UTF-8, once the command exits; the command's input is closed. `connection.startProcess(vararg command, dir)` returns a `PorterShellProcess`, a `java.lang.Process` whose streams are pipes to the running command, for input, binary output or a command that runs until it is stopped. Read its output as it arrives, or the command blocks once a pipe is full. Besides the `Process` methods it has `pid`, null where the service could not read it, and `signal(signal)`, which sends an `OsConstants.SIG*` value to the command alone, suspends, and is safe on the main thread. `signal` leaves a command that already exited alone, throws `IllegalArgumentException` for a value that is not a signal, and throws `PorterShellException` where `pid` is null or the signal cannot be delivered. A command that has not installed its handler yet dies from the signal instead of handling it, so send it once the command is running.
 
 ```kotlin
-val result = connection.exec(context, "sh", "-c", "ls -l /data/local/tmp")
+val result = connection.exec("sh", "-c", "ls -l /data/local/tmp")
+
+// Output as it comes
+val logcat = connection.startProcess("logcat", "-v", "brief")
+withContext(Dispatchers.IO) {
+    try {
+        logcat.inputStream.bufferedReader().useLines { lines -> lines.take(100).forEach(::show) }
+    } finally {
+        logcat.destroy()
+    }
+}
+
+// Input
+val writer = connection.startProcess("sh", "-c", "cat > /data/local/tmp/main.obb")
+withContext(Dispatchers.IO) {
+    try {
+        writer.outputStream.use { source.copyTo(it) }
+        check(writer.waitFor() == 0)
+    } finally {
+        writer.destroy()
+    }
+}
+
+// A command that has to finish something
+val recording = connection.startProcess("screenrecord", "/sdcard/Movies/demo.mp4")
+try {
+    // ... later, once it is recording
+    recording.signal(OsConstants.SIGINT)
+    withContext(Dispatchers.IO) { recording.waitFor() }
+} finally {
+    withContext(Dispatchers.IO) { recording.destroy() }
+}
 ```
 
-The first call binds the service, and later calls on the same connection reuse that binding until the service or the connection dies. The binding follows the permission like any user service, so a call without a grant throws `PorterSecurityException`. A command that is not found exits with 127, as in a shell. A working directory that does not exist, output that cannot be read, or a service that stops answering throws `PorterShellException`; the `Process` methods that wait throw it too. An empty command throws `IllegalArgumentException`. Cancelling `exec` or `startProcess` returns at once and kills the command together with its process group, which holds everything it started unless a process made a session of its own. So does `destroy()`, and so does the death of the app process that started it.
+The first call binds the service, and later calls on the same connection reuse that binding until the service or the connection dies. The binding follows the permission like any user service, so a call without a grant throws `PorterSecurityException`. A command that is not found exits with 127, as in a shell. A working directory that does not exist, output that cannot be read, or a service that stops answering throws `PorterShellException`; the `Process` methods that wait throw it too. An empty command throws `IllegalArgumentException`.
+
+Cancelling `exec` returns at once and sends SIGKILL to the command's process group, which holds everything it started unless a process made a session of its own; on a device without `/system/bin/setsid`, SIGKILL reaches the command alone. `destroy()` does the same, and so does the death of the app process that started the command. A local `Process.destroy()` sends SIGTERM instead. Cancelling `startProcess` kills the command only while the start is pending: once it returns, the command is the caller's to stop. `waitFor()` ends with `InterruptedException` when its thread is interrupted, so `runInterruptible(Dispatchers.IO) { process.waitFor() }` lets a timeout end the wait, though not the command. SIGKILL gives nothing a chance to clean up, so stop a command that has to with `signal` and wait for it.
 
 ### The use of non-SDK interfaces
 

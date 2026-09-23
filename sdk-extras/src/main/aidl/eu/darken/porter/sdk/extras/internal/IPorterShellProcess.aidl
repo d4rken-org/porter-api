@@ -18,4 +18,10 @@ interface IPorterShellProcess {
     int exitValue() = 6;
 
     void destroy() = 7;
+
+    // -1 where the service could not read it.
+    int pid() = 8;
+
+    // To the process only, not to what it started.
+    void signal(int signal) = 9;
 }

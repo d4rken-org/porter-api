@@ -40,6 +40,8 @@ public class PorterConnection internal constructor(
     public val binder: IBinder,
     /** The wire this connection speaks. */
     public val backend: PorterBackend,
+    /** This app's package, which the connection attached as and a user service of it is named in. */
+    public val packageName: String,
 ) {
 
     internal val wire: PorterWire = when (backend) {

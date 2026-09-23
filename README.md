@@ -81,11 +81,26 @@ implementation("com.github.d4rken-org.porter-api:sdk-extras:+")
 ```
 
 ```kotlin
-val result = connection.exec(context, "sh", "-c", "pm list packages -3")
-if (result.exitCode == 0) show(result.output)
+val result = connection.exec("sh", "-c", "pm list packages -3")
+if (result.exitCode == 0) show(result.output) else log(result.errors)
 ```
 
-The command runs in a user service that `sdk-extras` ships, started on the first call and shared by the calls after it, so there is nothing to declare. Cancelling kills the command and what it started, and `withTimeout` works around it. A command that needs input, writes binary output or keeps running takes `connection.startProcess(context, ...)`, which returns a `java.lang.Process`. A command that is not found exits with 127, as in a shell; a service that cannot start one at all, or stops while it runs, throws `PorterShellException`.
+The command runs in a user service that `sdk-extras` ships, started on the first call and shared by the calls after it, so there is nothing to declare. A command that is not found exits with 127, as in a shell; a service that cannot start one at all, or stops while it runs, throws `PorterShellException`.
+
+A command that needs input, writes binary output or keeps running takes `startProcess`, which returns a `PorterShellProcess`, a `java.lang.Process` whose streams are pipes to the command:
+
+```kotlin
+val recording = connection.startProcess("screenrecord", "/sdcard/Movies/demo.mp4")
+try {
+    // ... later, once it is recording
+    recording.signal(OsConstants.SIGINT) // screenrecord finishes the file on SIGINT
+    withContext(Dispatchers.IO) { recording.waitFor() }
+} finally {
+    withContext(Dispatchers.IO) { recording.destroy() }
+}
+```
+
+Cancelling `exec` kills the command and everything it started, so `withTimeout` bounds one that hangs. `startProcess` hands the command to you once it returns: stop it with `destroy()`, which sends SIGKILL the same way. A killed command cleans nothing up, so send a `signal` first to one that has to finish something, once it has started up; a signal it has no handler for yet ends it instead.
 
 ## Run your own code as shell or root
 

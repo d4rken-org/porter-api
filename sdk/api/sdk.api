@@ -102,6 +102,7 @@ public final class eu/darken/porter/sdk/PorterConnection {
 	public final fun checkRemotePermission (Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun getBackend ()Leu/darken/porter/sdk/PorterBackend;
 	public final fun getBinder ()Landroid/os/IBinder;
+	public final fun getPackageName ()Ljava/lang/String;
 	public final fun getPermission ()Lkotlinx/coroutines/flow/StateFlow;
 	public final fun getSeLinuxContext ()Ljava/lang/String;
 	public final fun getServerInfo ()Leu/darken/porter/sdk/PorterServerInfo;

@@ -3,6 +3,7 @@ package eu.darken.porter.sdk.extras
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.system.OsConstants
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import eu.darken.porter.protocol.PorterProtocol
@@ -20,6 +21,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -82,7 +84,7 @@ internal class PorterShellInstrumentedTest {
 
     @Test(timeout = 20_000)
     fun execReturnsTheExitCodeAndBothStreams() = runBlocking {
-        val result = connection.exec(context, "sh", "-c", "echo out; echo err >&2; exit 3")
+        val result = connection.exec("sh", "-c", "echo out; echo err >&2; exit 3")
 
         assertEquals(3, result.exitCode)
         assertEquals("out\n", result.output)
@@ -95,7 +97,7 @@ internal class PorterShellInstrumentedTest {
         val line = "0123456789".repeat(10)
         val script = "i=0; while [ \$i -lt 3000 ]; do echo $line; echo $line >&2; i=\$((i+1)); done"
 
-        val result = connection.exec(context, "sh", "-c", script)
+        val result = connection.exec("sh", "-c", script)
 
         assertEquals(0, result.exitCode)
         assertEquals(3000 * (line.length + 1), result.output.length)
@@ -104,7 +106,7 @@ internal class PorterShellInstrumentedTest {
 
     @Test(timeout = 20_000)
     fun aStartedProcessTakesInputAndReportsItsExit() = runBlocking {
-        val process = connection.startProcess(context, "cat")
+        val process = connection.startProcess("cat")
 
         process.outputStream.use { it.write("hello".toByteArray()) }
         val output = process.inputStream.bufferedReader().use { it.readText() }
@@ -114,13 +116,39 @@ internal class PorterShellInstrumentedTest {
         assertEquals(0, process.exitValue())
     }
 
+    /** A command that has to finish something gets the signal it asks for, not SIGKILL. */
+    @Test(timeout = 20_000)
+    fun aSignalReachesTheCommand() = runBlocking {
+        val process = connection.startProcess("sh", "-c", "trap 'echo interrupted; exit 3' INT; echo ready; while true; do sleep 1; done")
+        val output = process.inputStream.bufferedReader()
+        assertEquals("ready", output.readLine())
+
+        process.signal(OsConstants.SIGINT)
+
+        assertEquals("interrupted", output.readLine())
+        assertEquals(3, process.waitFor())
+    }
+
+    @Test(timeout = 20_000)
+    fun aValueThatIsNotASignalIsRefused() = runBlocking {
+        val process = connection.startProcess("sleep", "30")
+        try {
+            process.signal(9999)
+            fail("9999 was sent as a signal")
+        } catch (e: IllegalArgumentException) {
+            // expected
+        } finally {
+            process.destroy()
+        }
+    }
+
     /** `sh -c` forks the command it runs, and that child dies with the cancellation too. */
     @Test(timeout = 20_000)
     fun cancellingKillsWhatTheCommandStarted() = runBlocking {
         val pidFile = File(context.cacheDir, "porter-shell-child.pid").apply { delete() }
         try {
             withTimeoutOrNull(1_500) {
-                connection.exec(context, "sh", "-c", "sleep 30 & echo \$! > '${pidFile.absolutePath}'; wait")
+                connection.exec("sh", "-c", "sleep 30 & echo \$! > '${pidFile.absolutePath}'; wait")
             }
             val pid = pidFile.readText().trim()
             val deadline = System.currentTimeMillis() + 5_000
@@ -134,7 +162,7 @@ internal class PorterShellInstrumentedTest {
     /** A prompt only gets its answer if what the app writes reaches the process at once. */
     @Test(timeout = 20_000)
     fun inputReachesTheProcessBeforeItIsClosed() = runBlocking {
-        val process = connection.startProcess(context, "sh", "-c", "read line; echo got \$line; read rest")
+        val process = connection.startProcess("sh", "-c", "read line; echo got \$line; read rest")
         try {
             process.outputStream.write("ping\n".toByteArray())
             process.outputStream.flush()
