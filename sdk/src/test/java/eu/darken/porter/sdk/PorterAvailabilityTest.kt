@@ -3,6 +3,7 @@ package eu.darken.porter.sdk
 import android.content.Context
 import android.content.pm.PackageManager
 import android.content.pm.PermissionInfo
+import android.content.pm.ProviderInfo
 import eu.darken.porter.protocol.PorterProtocol
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -31,6 +32,8 @@ internal class PorterAvailabilityTest {
         // Server calls run inline, so each step below has happened when the next one asserts.
         Porter.ioDispatcher = Dispatchers.Unconfined
         `when`(context.packageManager).thenReturn(packages)
+        `when`(context.packageName).thenReturn(PACKAGE)
+        providerAtShizukusAuthority(PorterShizukuApiProvider::class.java.name)
         for (permission in listOf(PorterProtocol.PERMISSION, ShizukuProtocol.PERMISSION, ShizukuProtocol.PLUS_PERMISSION)) {
             undeclared(permission)
         }
@@ -51,6 +54,13 @@ internal class PorterAvailabilityTest {
         val info = PermissionInfo()
         info.packageName = packageName
         doReturn(info).`when`(packages).getPermissionInfo(permission, 0)
+    }
+
+    private fun providerAtShizukusAuthority(className: String) {
+        val info = ProviderInfo()
+        info.packageName = PACKAGE
+        info.name = className
+        doReturn(info).`when`(packages).resolveContentProvider(PACKAGE + ShizukuCompat.AUTHORITY_SUFFIX, 0)
     }
 
     private fun undeclared(permission: String) {
@@ -142,6 +152,15 @@ internal class PorterAvailabilityTest {
         shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID)
         plusPermissionOwnedBy(ShizukuProtocol.PLUS_MANAGER_APPLICATION_ID)
         ShizukuCompat.setPresentForTest(false)
+
+        assertEquals(PorterAvailability.NotInstalled, Porter.availability(context))
+    }
+
+    /** Upstream's provider holds the authority, so its client gets the binder and this SDK never does. */
+    @Test
+    fun aShizukuManagerWithUpstreamsProviderIsNotInstalled() = runBlocking<Unit> {
+        shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID)
+        providerAtShizukusAuthority("rikka.shizuku.ShizukuProvider")
 
         assertEquals(PorterAvailability.NotInstalled, Porter.availability(context))
     }

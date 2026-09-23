@@ -45,6 +45,7 @@ internal class RedDeathDispatchOrderingHandlerTest {
         // Server calls run inline, so each step below has happened when the next one asserts.
         Porter.ioDispatcher = Dispatchers.Unconfined
         context = RuntimeEnvironment.getApplication()
+        declareShizukuProvider(context)
         // This process hosts no provider, so the SDK's built-in fetches are all it has; they run
         // inline, where the assertions can see them.
         Porter.deliveryExecutor = Executor { it.run() }
