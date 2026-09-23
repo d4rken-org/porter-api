@@ -13,12 +13,16 @@ import androidx.annotation.VisibleForTesting
 import eu.darken.porter.protocol.PorterProtocol
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -96,11 +100,15 @@ public object Porter {
     private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
     /**
-     * A view of [Dispatchers.IO] with a limit of its own: a server that stops answering holds at
-     * most this many threads, and none of them counts against the limit the app's own IO work
-     * shares.
+     * The SDK's own threads, at most 16: a server that stops answering holds these, never the
+     * threads the app's own IO work runs on. An executor rather than a view of [Dispatchers.IO],
+     * because porsh runs this SDK on the older kotlinx-coroutines its loader bundles; the porsh case
+     * of the Porter app's emulator smoke test is what exercises that.
      */
-    private val defaultIoDispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(16)
+    private val defaultIoDispatcher: CoroutineDispatcher =
+        ThreadPoolExecutor(16, 16, 30, TimeUnit.SECONDS, LinkedBlockingQueue()) { task ->
+            Thread(task, "porter-server-call").apply { isDaemon = true }
+        }.apply { allowCoreThreadTimeOut(true) }.asCoroutineDispatcher()
 
     /** Where every call that blocks on a server runs. A test pins it; [resetForTest] restores it. */
     @Volatile
