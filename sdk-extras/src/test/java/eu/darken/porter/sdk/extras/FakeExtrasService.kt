@@ -8,7 +8,7 @@ import eu.darken.porter.server.IPorterService
 import eu.darken.porter.server.IPorterServiceConnection
 
 /** A local stub standing in for the server, carrying only the system property calls. */
-internal class FakeExtrasService : IPorterService.Stub() {
+internal open class FakeExtrasService : IPorterService.Stub() {
 
     /** The version pair is the least a server has to say for the SDK to speak to it. */
     var attachReply: Bundle = Bundle().apply {

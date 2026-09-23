@@ -32,6 +32,8 @@ allprojects {
 // apiDump has not been run for.
 apiValidation {
     ignoredProjects += subprojects.map { it.name }.filter { it !in publishedModules }
+    // The shell service's AIDL: generated Java, public only because a stub has to be.
+    ignoredPackages += "eu.darken.porter.sdk.extras.internal"
 }
 
 subprojects {

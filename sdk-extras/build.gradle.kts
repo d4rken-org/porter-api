@@ -7,9 +7,11 @@ android {
     namespace = "eu.darken.porter.sdk.extras"
     defaultConfig {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        consumerProguardFiles("consumer-rules.pro")
     }
     buildFeatures {
         buildConfig = false
+        aidl = true
     }
     testOptions { unitTests.isIncludeAndroidResources = true }
     compileOptions {
@@ -37,6 +39,8 @@ dependencies {
     testImplementation("org.robolectric:robolectric:4.16.1")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 
+    // The shell tests stand in for the server, which answers in the protocol's keys.
+    androidTestImplementation(project(":protocol"))
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
 }
