@@ -45,6 +45,11 @@ internal class PorterServiceConnections {
         cache[key(args)]
     }
 
+    /** Whether [connection] is still the binding its identity resolves to, and somebody collects it. */
+    fun isWanted(connection: PorterServiceConnection): Boolean = synchronized(lock) {
+        !closed && cache[key(connection.args)] === connection && connection.hasListeners()
+    }
+
     private fun key(args: UserServiceArgs): String = args.tag ?: args.componentName.className
 
     fun remove(connection: PorterServiceConnection) {

@@ -6,7 +6,9 @@ import android.os.IBinder
 import android.util.Log
 import eu.darken.porter.protocol.PorterProtocol.CAPABILITIES_NONE
 import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_RESULT_NOT_RUNNING
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -15,8 +17,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.withContext
 
 /**
  * One connection to one server binder: what its attach reply said, what the server has pushed since,
@@ -29,7 +29,9 @@ import kotlinx.coroutines.withContext
  *
  * Every call here that reaches the server suspends and is safe to make from the main thread. A
  * failed call throws a [PorterException]: [PorterSecurityException] where the server refused it,
- * [PorterRemoteException] where the binder failed.
+ * [PorterRemoteException] where the binder failed. Cancelling a call ends the wait at once, so a
+ * timeout around it works against a server that stopped answering; a call already sent still
+ * reaches the server and takes effect there.
  */
 public class PorterConnection internal constructor(
     /** Never reset, so a connection of this process is never mistaken for a later one. */
@@ -150,7 +152,7 @@ public class PorterConnection internal constructor(
     public val seLinuxContext: String? get() = serverContext
 
     /** Whether the server binder still answers a ping. */
-    public suspend fun isAlive(): Boolean = withContext(Porter.ioDispatcher) { binder.pingBinder() }
+    public suspend fun isAlive(): Boolean = Porter.serverCall { binder.pingBinder() }
 
     internal fun permissionPushes(): Int = synchronized(permissionLock) { permissionStateGeneration }
 
@@ -196,7 +198,7 @@ public class PorterConnection internal constructor(
      * attach state, because that wire carries no callback of its own for it. A server that never
      * re-sends leaves a grant in place until its binder dies.
      */
-    public suspend fun checkPermission(): PermissionState = withContext(Porter.ioDispatcher) { checkPermissionBlocking() }
+    public suspend fun checkPermission(): PermissionState = Porter.serverCall { checkPermissionBlocking() }
 
     private fun checkPermissionBlocking(): PermissionState {
         var pushes: Int
@@ -246,12 +248,12 @@ public class PorterConnection internal constructor(
             pendingRequests[requestCode] = answer
         }
         try {
-            withContext(Porter.ioDispatcher) { wire.requestPermission(requestCode) }
+            Porter.serverCall { wire.requestPermission(requestCode) }
             val result = answer.await()
             if (result.allowed) return synchronized(permissionLock) { _permission.value }
             // A denial names no rationale flag, so the server is asked for it. The answer
             // describes the denial, so it applies only while that is still the state.
-            val rationale = withContext(Porter.ioDispatcher) { wire.shouldShowRequestPermissionRationale() }
+            val rationale = Porter.serverCall { wire.shouldShowRequestPermissionRationale() }
             synchronized(permissionLock) {
                 if (permissionStateGeneration == result.pushes) {
                     shouldShowRequestPermissionRationale = rationale
@@ -292,14 +294,14 @@ public class PorterConnection internal constructor(
     /** Whether the server itself holds [permission]. */
     public suspend fun checkRemotePermission(permission: String): Boolean {
         if (serverUid == 0) return true
-        return withContext(Porter.ioDispatcher) { wire.checkPermission(permission) } == PackageManager.PERMISSION_GRANTED
+        return Porter.serverCall { wire.checkPermission(permission) } == PackageManager.PERMISSION_GRANTED
     }
 
     public suspend fun getSystemProperty(name: String, default: String? = null): String? =
-        withContext(Porter.ioDispatcher) { wire.getSystemProperty(name, default) }
+        Porter.serverCall { wire.getSystemProperty(name, default) }
 
     public suspend fun setSystemProperty(name: String, value: String) {
-        withContext(Porter.ioDispatcher) { wire.setSystemProperty(name, value) }
+        Porter.serverCall { wire.setSystemProperty(name, value) }
     }
 
     /**
@@ -364,12 +366,25 @@ public class PorterConnection internal constructor(
             close()
             return@callbackFlow
         }
+        val binding = registration.connection
+        // A bind that returned may have registered the callback even where the service is not
+        // running: the server keeps it on a record that exists.
+        val registered = AtomicBoolean()
+        val bind = Porter.detachedCall {
+            wire.addUserService(binding, args, noCreate = !start).also { registered.set(true) }
+        }
         val result = try {
-            wire.addUserService(registration.connection, args, noCreate = !start)
+            bind.await()
+        } catch (e: CancellationException) {
+            // A bind still queued never reaches the server. One already sent cannot be withdrawn,
+            // and lands after this collector left, so whatever it registered is dropped once it has
+            // unless another collector took the binding up meanwhile.
+            bind.cancel()
+            leave(binding, listener)
+            bind.invokeOnCompletion { if (registered.get()) dropIfUnwanted(binding) }
+            throw e
         } catch (e: RuntimeException) {
-            // Removes the registration this call made, and no lifecycle state: a death either
-            // happened, in which case the binding is retired and evicted, or it did not.
-            if (registration.inserted) registration.connection.removeListener(listener)
+            forget(registration, listener)
             // A server already gone ends the flow as its death will once that is dispatched, so a
             // collector does not see a failure or a completion depending on which came first.
             if (e is PorterRemoteException && e.cause is DeadObjectException) {
@@ -378,31 +393,57 @@ public class PorterConnection internal constructor(
             }
             throw e
         }
-        // Registered here before the connection was lost, and on the server after its bindings
-        // were dropped there, so this one is dropped on its own. The listener was told of the loss.
-        if (userServices.isClosed()) dropOnServer(registration.connection)
+        // Registered on the server after the connection was lost and its bindings dropped there, so
+        // this one is dropped on its own. The listener was told of the loss.
+        dropIfUnwanted(binding)
         if (!start && result == USER_SERVICE_RESULT_NOT_RUNNING) close()
-        awaitClose { release(args, registration.connection, listener) }
-    }.flowOn(Porter.ioDispatcher).distinctUntilChanged { old, new -> old === new }
+        awaitClose { release(binding, listener) }
+    }.distinctUntilChanged { old, new -> old === new }
+
+    /**
+     * Drops [binding] on the server once a bind has registered it there, where nobody collects it
+     * any more. Every way of giving a binding up drops it on the server only as it happens, so a
+     * bind that lands after that is undone here.
+     */
+    private fun dropIfUnwanted(binding: PorterServiceConnection) {
+        if (!userServices.isWanted(binding)) Porter.detachedCall { dropOnServer(binding) }
+    }
+
+    /**
+     * Removes the registration a failed bind made, and no lifecycle state: a death either happened,
+     * in which case the binding is retired and evicted, or it did not.
+     */
+    private fun forget(registration: PorterServiceConnections.Registration, listener: UserServiceListener) {
+        if (registration.inserted) registration.connection.removeListener(listener)
+    }
 
     /**
      * Drops one collector's registration, and the server's binding with it when it was the last.
-     * The registry decides which under its own lock, so a collector arriving at the same time
-     * either joins before the count reaches zero or finds a fresh entry after the eviction.
      */
-    private fun release(args: UserServiceArgs, connection: PorterServiceConnection, listener: UserServiceListener) {
-        val last = synchronized(userServices.lock) {
+    private fun release(connection: PorterServiceConnection, listener: UserServiceListener) {
+        if (!leave(connection, listener)) return
+        // The connection is a Binder the server still holds, so it would keep receiving "connected"
+        // and "died" and keep calling back after a later bind. Drop it on the server, without
+        // holding up the collector that is leaving: the server unregisters this callback alone, so a
+        // later bind of the same service is not affected by when the drop lands.
+        Porter.detachedCall { dropOnServer(connection) }
+    }
+
+    /**
+     * Drops one collector's registration here, and evicts the binding when it was the last. The
+     * registry decides which under its own lock, so a collector arriving at the same time either
+     * joins before the count reaches zero or finds a fresh entry after the eviction.
+     *
+     * @return whether the binding was evicted and is still registered on the server
+     */
+    private fun leave(connection: PorterServiceConnection, listener: UserServiceListener): Boolean =
+        synchronized(userServices.lock) {
             connection.removeListener(listener)
             // A dead binding was retired by its death and has nothing left on the server to drop.
             val last = !connection.isTerminal() && !connection.hasListeners()
             if (last) userServices.remove(connection)
             last
         }
-        if (!last) return
-        // The connection is a Binder the server still holds, so it would keep receiving "connected"
-        // and "died" and keep calling back after a later bind. Drop it on the server.
-        dropOnServer(connection)
-    }
 
     private fun dropOnServer(binding: PorterServiceConnection) {
         try {
@@ -416,19 +457,18 @@ public class PorterConnection internal constructor(
      * Whether the service is running: its version code if it is, or null. Does not start it, and
      * does not bind this caller to it.
      */
-    public suspend fun peekUserService(args: UserServiceArgs): Int? = withContext(Porter.ioDispatcher) { peekBlocking(args) }
+    public suspend fun peekUserService(args: UserServiceArgs): Int? = Porter.serverCall { peekBlocking(args) }
 
     private fun peekBlocking(args: UserServiceArgs): Int? {
         // Outside the registry: nothing collects through it, so a running service's push lands on
-        // a callback nobody reads, and the registration is dropped again as soon as it answered.
+        // a callback nobody reads, and the registration is dropped again as soon as it answered. A
+        // service that is not running can still have a record, which keeps the callback too.
         val probe = PorterServiceConnection(userServices, args)
         val result = wire.addUserService(probe, args, noCreate = true)
-        if (result != USER_SERVICE_RESULT_NOT_RUNNING) {
-            try {
-                wire.removeUserService(probe, args, remove = false)
-            } catch (e: RuntimeException) {
-                Log.w(TAG, "could not drop the peek registration: $e")
-            }
+        try {
+            wire.removeUserService(probe, args, remove = false)
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "could not drop the peek registration: $e")
         }
         return result.takeIf { it != USER_SERVICE_RESULT_NOT_RUNNING }
     }
@@ -439,7 +479,7 @@ public class PorterConnection internal constructor(
      * Collectors of [userService] see the flow complete either way.
      */
     public suspend fun stopUserService(args: UserServiceArgs) {
-        withContext(Porter.ioDispatcher) { wire.removeUserService(null, args, remove = true) }
+        Porter.serverCall { wire.removeUserService(null, args, remove = true) }
     }
 
     // --------------------- lifecycle ----------------------

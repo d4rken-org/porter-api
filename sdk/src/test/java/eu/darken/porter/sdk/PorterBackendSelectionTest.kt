@@ -111,6 +111,19 @@ internal class PorterBackendSelectionTest {
         assertEquals(0, ignored.deathLinks)
     }
 
+    /** Shizuku+'s Plus flavor declares only its own permission and delivers as Shizuku does. */
+    @Test
+    fun onlyShizukuPlusInstalledSelectsShizukuAndTakesItsDelivery() {
+        declares(ShizukuProtocol.PLUS_MANAGER_APPLICATION_ID, ShizukuProtocol.PLUS_PERMISSION)
+
+        assertEquals(Porter.Selection.SHIZUKU, Porter.selectBackend(context))
+
+        val plus = deliverShizuku()
+
+        assertSame(plus, binder())
+        assertEquals(1, plus.attachCount)
+    }
+
     @Test
     fun bothInstalledSelectsPorter() {
         porterIsInstalled()

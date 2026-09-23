@@ -70,7 +70,7 @@ suspend fun onPorterReady(connection: PorterConnection) {
 
 `permanentlyDenied` is "deny and don't ask again"; asking again is refused without a prompt.
 
-Every call that reaches Porter suspends and is safe on the main thread. A failed call throws a `PorterException`: `PorterSecurityException` when Porter refuses it, usually because access was not granted, and `PorterRemoteException` when the Binder call itself failed.
+Every call that reaches Porter suspends and is safe on the main thread. A failed call throws a `PorterException`: `PorterSecurityException` when Porter refuses it, usually because access was not granted, and `PorterRemoteException` when the Binder call itself failed. Cancelling a call returns at once, so `withTimeout` works even against a server that stopped answering; a call already sent still takes effect.
 
 ## Run your own code as shell or root
 
@@ -107,6 +107,26 @@ connection.userService(args).collect { binder ->
 
 `connection.uid` is `2000` for ADB and `0` for root. The service stops when your app's process dies; set `daemon = true` to keep it running until you call `connection.stopUserService(args)`, which sends it `destroy`.
 
+The flow completes when the service dies or Porter restarts. To keep one service for the whole app, bind again after either:
+
+```kotlin
+val myService: StateFlow<IMyService?> = Porter.connection
+    .flatMapLatest { connection ->
+        if (connection == null) return@flatMapLatest flowOf(null)
+        connection.permission.flatMapLatest { permission ->
+            if (permission !is PermissionState.Granted) return@flatMapLatest flowOf(null)
+            flow {
+                while (true) {
+                    emitAll(connection.userService(args).map { IMyService.Stub.asInterface(it) })
+                    emit(null) // the service died on a Porter that still runs
+                    delay(1_000)
+                }
+            }
+        }
+    }
+    .stateIn(appScope, SharingStarted.WhileSubscribed(30_000), null)
+```
+
 ## Call a system service
 
 `connection.wrap(binder)` re-issues every transaction on a system service Binder at Porter's identity. The lookup needs `sdk-extras`, which brings `sdk` with it:
@@ -128,10 +148,10 @@ Platform AIDL like `IPackageManager` is not in the public SDK, so this route nee
 ```kotlin
 lifecycleScope.launch {
     when (val availability = Porter.availability(this@MainActivity)) {
-        PorterAvailability.Connected -> Unit
-        PorterAvailability.InstalledNotConnected -> tell("Open Porter and start the service")
+        is PorterAvailability.Connected -> Unit
+        is PorterAvailability.InstalledNotConnected -> offerToOpen(availability.packageName, "Start the service")
         PorterAvailability.NotInstalled -> tell("Install Porter")
-        PorterAvailability.InstalledUnrecognized -> tell("Another app owns Porter's permission")
+        is PorterAvailability.InstalledUnrecognized -> tell("${availability.packageName} owns Porter's permission")
         is PorterAvailability.Incompatible -> if (availability.incompatibility.serverTooOld) {
             tell("Update Porter")
         } else {
@@ -141,7 +161,7 @@ lifecycleScope.launch {
 }
 ```
 
-Porter installed is not Porter running, so `InstalledNotConnected` is the normal state before the user starts it.
+Porter installed is not Porter running, so `InstalledNotConnected` is the normal state before the user starts it. `packageName` is the app that declares the permission, found by the permission rather than by name, so a renamed Shizuku fork or Shizuku+ is found as well.
 
 ## More
 
