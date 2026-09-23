@@ -1,6 +1,5 @@
 package eu.darken.porter.sdk.extras
 
-import android.content.Context
 import android.os.Bundle
 import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.protocol.PorterProtocol.REPLY_MIN_PROTOCOL_VERSION
@@ -26,7 +25,6 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import org.robolectric.shadows.ShadowLooper
 
@@ -58,13 +56,11 @@ internal class PorterShellTest {
         }
     }
 
-    private lateinit var context: Context
     private lateinit var server: ShellServer
     private lateinit var connection: PorterConnection
 
     @Before
     fun setup() {
-        context = RuntimeEnvironment.getApplication()
         server = ShellServer()
         server.attachReply = Bundle().apply {
             putInt(REPLY_PROTOCOL_VERSION, PorterProtocol.VERSION)
@@ -100,7 +96,7 @@ internal class PorterShellTest {
 
     @Test
     fun execReturnsTheExitCode() {
-        val result = offMain { connection.exec(context, "sh", "-c", "exit 3") }
+        val result = offMain { connection.exec("sh", "-c", "exit 3") }
 
         assertEquals(3, result.exitCode)
     }
@@ -110,7 +106,7 @@ internal class PorterShellTest {
         val dir = java.nio.file.Files.createTempDirectory("porter-shell").toFile()
         try {
             val result = offMain {
-                connection.exec(context, "sh", "-c", "[ \"$(pwd -P)\" = '${dir.canonicalPath}' ]", dir = dir.absolutePath)
+                connection.exec("sh", "-c", "[ \"$(pwd -P)\" = '${dir.canonicalPath}' ]", dir = dir.absolutePath)
             }
 
             assertEquals(0, result.exitCode)
@@ -121,15 +117,15 @@ internal class PorterShellTest {
 
     @Test
     fun callsShareOneBinding() {
-        offMain { connection.exec(context, "true") }
-        offMain { connection.exec(context, "true") }
+        offMain { connection.exec("true") }
+        offMain { connection.exec("true") }
 
         assertEquals(1, server.adds)
     }
 
     @Test
     fun aCommandThatIsNotFoundExitsWith127() {
-        val result = offMain { connection.exec(context, "/nonexistent/porter-shell-test") }
+        val result = offMain { connection.exec("/nonexistent/porter-shell-test") }
 
         assertEquals(127, result.exitCode)
     }
@@ -137,7 +133,7 @@ internal class PorterShellTest {
     @Test
     fun aDirectoryThatDoesNotExistThrows() {
         try {
-            offMain { connection.exec(context, "true", dir = "/nonexistent/porter-shell-test") }
+            offMain { connection.exec("true", dir = "/nonexistent/porter-shell-test") }
             fail("a command started in a directory that does not exist")
         } catch (e: PorterShellException) {
             // expected
@@ -147,7 +143,7 @@ internal class PorterShellTest {
     @Test
     fun anEmptyCommandIsRefusedWithoutBinding() {
         try {
-            offMain { connection.exec(context) }
+            offMain { connection.exec() }
             fail("an empty command was run")
         } catch (e: IllegalArgumentException) {
             // expected
@@ -160,7 +156,7 @@ internal class PorterShellTest {
     fun aRefusedBindThrowsTheSdksSecurityException() {
         server.refuse = true
         try {
-            offMain { connection.exec(context, "true") }
+            offMain { connection.exec("true") }
             fail("a refused bind ran the command")
         } catch (e: PorterSecurityException) {
             // expected
@@ -175,7 +171,7 @@ internal class PorterShellTest {
             try {
                 offMain {
                     withTimeout(1_000) {
-                        connection.exec(context, "sh", "-c", "echo $$ > '${pidFile.absolutePath}'; exec sleep 30")
+                        connection.exec("sh", "-c", "echo $$ > '${pidFile.absolutePath}'; exec sleep 30")
                     }
                 }
                 fail("the command outlived its timeout")
@@ -194,8 +190,26 @@ internal class PorterShellTest {
     }
 
     @Test
+    fun aStartedProcessKnowsItsPid() {
+        val pidFile = File.createTempFile("porter-shell", ".pid")
+        try {
+            val process = offMain { connection.startProcess("sh", "-c", "echo $$ > '${pidFile.absolutePath}'; exec sleep 30") }
+            try {
+                val deadline = System.currentTimeMillis() + 5_000
+                while (pidFile.length() == 0L && System.currentTimeMillis() < deadline) Thread.sleep(20)
+
+                assertEquals(pidFile.readText().trim().toInt(), process.pid)
+            } finally {
+                process.destroy()
+            }
+        } finally {
+            pidFile.delete()
+        }
+    }
+
+    @Test
     fun aRunningProcessHasNoExitValueYet() {
-        val process = offMain { connection.startProcess(context, "sleep", "30") }
+        val process = offMain { connection.startProcess("sleep", "30") }
         try {
             try {
                 process.exitValue()

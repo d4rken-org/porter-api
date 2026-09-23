@@ -71,6 +71,7 @@ internal class PorterAttachTest {
         assertEquals(PorterProtocol.VERSION, fake.attachArgs!!.getInt(ATTACH_PROTOCOL_VERSION))
 
         val connection = current()
+        assertEquals(PACKAGE, connection.packageName)
         assertTrue(connection.isAlive())
         assertEquals(SERVER_UID, connection.uid)
         val server = connection.serverInfo

@@ -205,7 +205,7 @@ public object Porter {
                 return false
             }
 
-            session = PorterConnection(++connections, newBinder, backend)
+            session = PorterConnection(++connections, newBinder, backend, packageName)
             latest = session
             session.link()
         }

@@ -3,7 +3,6 @@
 package eu.darken.porter.sdk.extras
 
 import android.content.ComponentName
-import android.content.Context
 import android.os.Binder
 import android.os.DeadObjectException
 import android.os.IBinder
@@ -28,22 +27,22 @@ import kotlinx.coroutines.launch
  * Runs [command] at the connection's identity, shell or root, and returns once it exits.
  *
  * ```kotlin
- * val result = connection.exec(context, "sh", "-c", "ls /data/local/tmp")
+ * val result = connection.exec("sh", "-c", "ls /data/local/tmp")
  * if (result.exitCode == 0) show(result.output)
  * ```
  *
  * The command gets no input. Its output is read as UTF-8; a command that writes binary data or
- * needs input takes [startProcess] instead. Cancelling returns at once and kills the command with
- * the processes it started, so `withTimeout` bounds a command that does not end. A command that is
- * not found exits with 127, as in a shell.
+ * needs input takes [startProcess] instead. Cancelling returns at once and kills the command and its
+ * process group with SIGKILL, so `withTimeout` bounds a command that does not end. A command that
+ * is not found exits with 127, as in a shell.
  *
  * The first call starts a user service for this app, which the calls after it reuse. It needs the
  * permission granted, and a refusal throws the SDK's `PorterSecurityException`. A [dir] that does
  * not exist or a service that stops midway throws [PorterShellException], and an empty [command]
  * throws `IllegalArgumentException`.
  */
-public suspend fun PorterConnection.exec(context: Context, vararg command: String, dir: String? = null): PorterShellResult {
-    val process = start(context, command, dir)
+public suspend fun PorterConnection.exec(vararg command: String, dir: String? = null): PorterShellResult {
+    val process = start(command, dir)
     val run = ShellCalls.scope.async(ShellCalls.blocking) {
         process.outputStream.close()
         val errors = async { process.errorStream.readUtf8() }
@@ -63,19 +62,28 @@ public suspend fun PorterConnection.exec(context: Context, vararg command: Strin
 /**
  * Starts [command] at the connection's identity, shell or root, and returns while it runs.
  *
- * The streams are pipes to the process; read its output as it comes, or it blocks once a pipe is
- * full. [Process.destroy] kills it with the processes it started, and so does this app's process
- * dying. The blocking methods of [Process] throw [PorterShellException] if the shell service stops
- * while they wait.
+ * ```kotlin
+ * val logcat = connection.startProcess("logcat", "-v", "brief")
+ * withContext(Dispatchers.IO) {
+ *     try {
+ *         logcat.inputStream.bufferedReader().useLines { lines -> lines.take(100).forEach(::show) }
+ *     } finally {
+ *         logcat.destroy()
+ *     }
+ * }
+ * ```
  *
- * Needs the same user service and permission as [exec].
+ * Read its output as it comes, or the command blocks once a pipe is full. Cancelling kills the
+ * command only while the start is pending; once this returns, the command is the caller's to stop
+ * with [PorterShellProcess.destroy]. Needs the same user service and permission as [exec], and
+ * fails the same ways.
  */
-public suspend fun PorterConnection.startProcess(context: Context, vararg command: String, dir: String? = null): Process =
-    start(context, command, dir)
+public suspend fun PorterConnection.startProcess(vararg command: String, dir: String? = null): PorterShellProcess =
+    start(command, dir)
 
-private suspend fun PorterConnection.start(context: Context, command: Array<out String>, dir: String?): RemoteShellProcess {
+private suspend fun PorterConnection.start(command: Array<out String>, dir: String?): PorterShellProcess {
     require(command.isNotEmpty()) { "No command to run" }
-    val binding = ShellCalls.binding(this, context)
+    val binding = ShellCalls.binding(this)
     var service = binding.service(this)
     if (!service.asBinder().isBinderAlive) {
         binding.forget(service)
@@ -90,11 +98,11 @@ private suspend fun PorterConnection.start(context: Context, command: Array<out 
     }
 }
 
-private suspend fun IPorterShellService.startProcess(command: Array<out String>, dir: String?): RemoteShellProcess {
-    val started = AtomicReference<RemoteShellProcess?>()
+private suspend fun IPorterShellService.startProcess(command: Array<out String>, dir: String?): PorterShellProcess {
+    val started = AtomicReference<PorterShellProcess?>()
     val call = ShellCalls.scope.async(ShellCalls.blocking) {
         val remote = shellCall { start(arrayOf(*command), dir, ShellCalls.owner) }
-        RemoteShellProcess(remote).also { started.set(it) }
+        PorterShellProcess(remote).also { started.set(it) }
     }
     try {
         return call.await()
@@ -131,8 +139,19 @@ internal object ShellCalls {
 
     private val bindings = WeakHashMap<PorterConnection, ShellBinding>()
 
-    fun binding(connection: PorterConnection, context: Context): ShellBinding = synchronized(bindings) {
-        bindings.getOrPut(connection) { ShellBinding(args(context.packageName)) }
+    fun binding(connection: PorterConnection): ShellBinding = synchronized(bindings) {
+        bindings.getOrPut(connection) { ShellBinding(args(connection.packageName)) }
+    }
+
+    /** Runs a blocking shell call so that cancelling the caller returns at once. */
+    suspend fun <T> detached(block: () -> T): T {
+        val call = scope.async(blocking) { block() }
+        try {
+            return call.await()
+        } catch (e: CancellationException) {
+            call.cancel()
+            throw e
+        }
     }
 
     fun args(packageName: String): UserServiceArgs = UserServiceArgs(
