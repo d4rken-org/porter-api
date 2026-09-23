@@ -6,6 +6,7 @@
     <queries>
         <package android:name="eu.darken.porter" />
         <package android:name="moe.shizuku.privileged.api" />
+        <package android:name="af.shizuku.plus.api" />
     </queries>
 
     <application>

@@ -13,9 +13,13 @@ import androidx.annotation.VisibleForTesting
 import eu.darken.porter.protocol.PorterProtocol
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -88,11 +92,40 @@ public object Porter {
      */
     private val postDeadHooks = ArrayList<Runnable>()
 
-    private val mainHandler = Handler(Looper.getMainLooper())
+    /** Lazy, so that reading [connection] needs no main looper, as in a plain JVM test. */
+    private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
 
-    /** Where every suspending call that blocks on a server runs. A test pins it; [resetForTest] restores it. */
+    /**
+     * A view of [Dispatchers.IO] with a limit of its own: a server that stops answering holds at
+     * most this many threads, and none of them counts against the limit the app's own IO work
+     * shares.
+     */
+    private val defaultIoDispatcher: CoroutineDispatcher = Dispatchers.IO.limitedParallelism(16)
+
+    /** Where every call that blocks on a server runs. A test pins it; [resetForTest] restores it. */
     @Volatile
-    internal var ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    internal var ioDispatcher: CoroutineDispatcher = defaultIoDispatcher
+
+    /** Outlives every caller, so a call its caller stopped waiting for still runs to its end. */
+    private val detachedCalls = CoroutineScope(SupervisorJob())
+
+    /**
+     * Runs [block], which blocks on a server, on [ioDispatcher] and outside the caller's job.
+     * Cancelling the caller ends the wait at once. A call still queued then never runs; one already
+     * running cannot be interrupted, runs to its end, and what it does on the server still happens.
+     */
+    internal suspend fun <T> serverCall(block: () -> T): T {
+        val call = detachedCall(block)
+        try {
+            return call.await()
+        } catch (e: CancellationException) {
+            call.cancel()
+            throw e
+        }
+    }
+
+    /** As [serverCall], for a caller that waits on the result itself or not at all. */
+    internal fun <T> detachedCall(block: () -> T): Deferred<T> = detachedCalls.async(ioDispatcher) { block() }
 
     private val defaultDeliveryExecutor: Executor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "porter-delivery").apply { isDaemon = true }
@@ -306,8 +339,6 @@ public object Porter {
         return session.binder.takeIf { it.pingBinder() }
     }
 
-    private fun pingCurrent(): Boolean = synchronized(lock) { current }?.binder?.pingBinder() == true
-
     /**
      * Whether the manager of the backend this process selected is installed, which is not whether
      * its service is running: only [PorterAvailability.Connected] and
@@ -315,27 +346,29 @@ public object Porter {
      * this SDK share no protocol version; its [PorterIncompatibility] says which side has to move.
      *
      * The backend is Porter whenever a package declares Porter's permission, and Shizuku when one
-     * declares Shizuku's and the optional `shizuku-compat` artifact is on the classpath. An app
-     * without that artifact can receive no Shizuku binder at all, so a Shizuku-only device reads
-     * [PorterAvailability.NotInstalled] rather than promising a connection it cannot make.
+     * declares Shizuku's, or Shizuku+'s own, and the optional `shizuku-compat` artifact is on the
+     * classpath. An app without that artifact can receive no Shizuku binder at all, so a
+     * Shizuku-only device reads [PorterAvailability.NotInstalled] rather than promising a connection
+     * it cannot make.
      *
      * [PorterAvailability.InstalledUnrecognized] means a package owns the selected backend's
-     * permission and is not the manager this SDK knows. Do not name or launch it without your own
-     * verification.
-     *
-     * The permission lookup behind this is not filtered by package visibility, so a manager is
-     * found whatever package it is published under. One that owns the permission without being
-     * the manager this SDK knows reads [PorterAvailability.InstalledUnrecognized], not
-     * [PorterAvailability.NotInstalled].
+     * permission and is not the manager this SDK knows for it.
      */
-    public suspend fun availability(context: Context): PorterAvailability = withContext(ioDispatcher) {
-        if (pingCurrent()) return@withContext PorterAvailability.Connected
-        incompatibility()?.let { return@withContext PorterAvailability.Incompatible(it) }
+    public suspend fun availability(context: Context): PorterAvailability = serverCall {
+        val live = synchronized(lock) { current }?.takeIf { it.binder.pingBinder() }
+        if (live != null) return@serverCall PorterAvailability.Connected(live.backend, owner(context, live.backend)?.packageName)
+        incompatibility()?.let { return@serverCall PorterAvailability.Incompatible(it, owner(context, it.backend)?.packageName) }
 
-        when (selectBackend(context)) {
-            Selection.PORTER -> availabilityOf(context, PorterProtocol.PERMISSION, PorterProtocol.MANAGER_APPLICATION_ID)
-            Selection.SHIZUKU -> availabilityOf(context, ShizukuProtocol.PERMISSION, ShizukuProtocol.MANAGER_APPLICATION_ID)
-            Selection.NONE -> PorterAvailability.NotInstalled
+        val backend = when (selectBackend(context)) {
+            Selection.PORTER -> PorterBackend.PORTER
+            Selection.SHIZUKU -> PorterBackend.SHIZUKU
+            Selection.NONE -> return@serverCall PorterAvailability.NotInstalled
+        }
+        val owner = owner(context, backend) ?: return@serverCall PorterAvailability.NotInstalled
+        if (owner.recognized) {
+            PorterAvailability.InstalledNotConnected(backend, owner.packageName)
+        } else {
+            PorterAvailability.InstalledUnrecognized(backend, owner.packageName)
         }
     }
 
@@ -348,17 +381,32 @@ public object Porter {
         return refused.why.takeIf { refused.binder.pingBinder() }
     }
 
-    private fun availabilityOf(context: Context, permission: String, manager: String): PorterAvailability {
-        val owner = permissionOwner(context, permission) ?: return PorterAvailability.NotInstalled
-        return if (manager == owner) PorterAvailability.InstalledNotConnected else PorterAvailability.InstalledUnrecognized
+    /** A package declaring a backend's permission, and whether it is the manager this SDK knows for that permission. */
+    private class Owner(val packageName: String, val recognized: Boolean)
+
+    /**
+     * The first package declaring one of [backend]'s permissions. The stock Shizuku permission is
+     * asked first, so a device carrying both it and Shizuku+'s answers with the stock owner.
+     */
+    private fun owner(context: Context, backend: PorterBackend): Owner? {
+        val managers = when (backend) {
+            PorterBackend.PORTER -> listOf(PorterProtocol.PERMISSION to PorterProtocol.MANAGER_APPLICATION_ID)
+            PorterBackend.SHIZUKU -> listOf(
+                ShizukuProtocol.PERMISSION to ShizukuProtocol.MANAGER_APPLICATION_ID,
+                ShizukuProtocol.PLUS_PERMISSION to ShizukuProtocol.PLUS_MANAGER_APPLICATION_ID,
+            )
+        }
+        return managers.firstNotNullOfOrNull { (permission, manager) ->
+            permissionOwner(context, permission)?.let { Owner(it, recognized = it == manager) }
+        }
     }
 
     // --------------------- backend selection ----------------------
 
     /**
      * Which backend this process accepts a delivery on: Porter whenever any visible package claims
-     * Porter's permission, otherwise Shizuku when one claims Shizuku's and the optional
-     * `shizuku-compat` artifact is on the classpath, otherwise nothing at all.
+     * Porter's permission, otherwise Shizuku when one claims Shizuku's or Shizuku+'s and the
+     * optional `shizuku-compat` artifact is on the classpath, otherwise nothing at all.
      *
      * Held constant while a connection is live, and resolved again whenever there is none: a
      * running connection never changes backend, and a process that has none sees an install that
@@ -389,10 +437,10 @@ public object Porter {
     }
 
     private fun resolve(context: Context): Selection {
-        if (permissionOwner(context, PorterProtocol.PERMISSION) != null) return Selection.PORTER
+        if (owner(context, PorterBackend.PORTER) != null) return Selection.PORTER
         // Without the compat artifact no Shizuku binder can be unwrapped, so a Shizuku server this
         // app cannot receive from is not a backend to wait for.
-        if (ShizukuCompat.isPresent() && permissionOwner(context, ShizukuProtocol.PERMISSION) != null) {
+        if (ShizukuCompat.isPresent() && owner(context, PorterBackend.SHIZUKU) != null) {
             return Selection.SHIZUKU
         }
         return Selection.NONE
@@ -448,7 +496,7 @@ public object Porter {
             postDeadHooks.clear()
             _connection.value = null
         }
-        ioDispatcher = Dispatchers.IO
+        ioDispatcher = defaultIoDispatcher
         deliveryExecutor = defaultDeliveryExecutor
         ShizukuCompat.setPresentForTest(null)
         PorterApiProvider.resetForTest()

@@ -51,8 +51,9 @@ public abstract interface class eu/darken/porter/sdk/PorterAvailability {
 }
 
 public final class eu/darken/porter/sdk/PorterAvailability$Connected : eu/darken/porter/sdk/PorterAvailability {
-	public static final field INSTANCE Leu/darken/porter/sdk/PorterAvailability$Connected;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBackend ()Leu/darken/porter/sdk/PorterBackend;
+	public final fun getPackageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -60,20 +61,23 @@ public final class eu/darken/porter/sdk/PorterAvailability$Connected : eu/darken
 public final class eu/darken/porter/sdk/PorterAvailability$Incompatible : eu/darken/porter/sdk/PorterAvailability {
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getIncompatibility ()Leu/darken/porter/sdk/PorterIncompatibility;
+	public final fun getPackageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
 public final class eu/darken/porter/sdk/PorterAvailability$InstalledNotConnected : eu/darken/porter/sdk/PorterAvailability {
-	public static final field INSTANCE Leu/darken/porter/sdk/PorterAvailability$InstalledNotConnected;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBackend ()Leu/darken/porter/sdk/PorterBackend;
+	public final fun getPackageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
 
 public final class eu/darken/porter/sdk/PorterAvailability$InstalledUnrecognized : eu/darken/porter/sdk/PorterAvailability {
-	public static final field INSTANCE Leu/darken/porter/sdk/PorterAvailability$InstalledUnrecognized;
 	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBackend ()Leu/darken/porter/sdk/PorterBackend;
+	public final fun getPackageName ()Ljava/lang/String;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }

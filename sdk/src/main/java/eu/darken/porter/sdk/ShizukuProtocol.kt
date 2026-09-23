@@ -15,6 +15,13 @@ internal object ShizukuProtocol {
     const val MANAGER_APPLICATION_ID: String = "moe.shizuku.privileged.api"
     const val PERMISSION: String = "moe.shizuku.manager.permission.API_V23"
 
+    /**
+     * Shizuku+'s Plus flavor, which declares this permission instead of [PERMISSION] and delivers
+     * its binder the same way.
+     */
+    const val PLUS_MANAGER_APPLICATION_ID: String = "af.shizuku.plus.api"
+    const val PLUS_PERMISSION: String = "af.shizuku.plus.permission.API_V23"
+
     /** What attach declares this client to be. */
     const val CLIENT_API_VERSION: Int = 13
 

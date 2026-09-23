@@ -60,7 +60,7 @@ internal class PorterHandshakeTest {
 
         assertSame(fake, Porter.connection.value!!.binder)
         assertNull(Porter.incompatibility())
-        assertEquals(PorterAvailability.Connected, Porter.availability(context))
+        assertEquals(PorterAvailability.Connected(PorterBackend.PORTER, PorterProtocol.MANAGER_APPLICATION_ID), Porter.availability(context))
     }
 
     /** The server accepts this client but is itself older than what this SDK still speaks. */
@@ -160,7 +160,7 @@ internal class PorterHandshakeTest {
         Porter.onBinderReceived(FakePorterService(), PACKAGE)
 
         assertNull(Porter.incompatibility())
-        assertEquals(PorterAvailability.Connected, Porter.availability(context))
+        assertEquals(PorterAvailability.Connected(PorterBackend.PORTER, PorterProtocol.MANAGER_APPLICATION_ID), Porter.availability(context))
     }
 
     @Test
@@ -172,7 +172,7 @@ internal class PorterHandshakeTest {
         Porter.onBinderReceived(null, PACKAGE)
 
         assertNull(Porter.incompatibility())
-        assertEquals(PorterAvailability.InstalledNotConnected, Porter.availability(context))
+        assertEquals(PorterAvailability.InstalledNotConnected(PorterBackend.PORTER, PorterProtocol.MANAGER_APPLICATION_ID), Porter.availability(context))
     }
 
     /** A refused server that has since stopped is no longer running, incompatible or not. */
@@ -189,7 +189,7 @@ internal class PorterHandshakeTest {
         old.alive = false
 
         assertNull(Porter.incompatibility())
-        assertEquals(PorterAvailability.InstalledNotConnected, Porter.availability(context))
+        assertEquals(PorterAvailability.InstalledNotConnected(PorterBackend.PORTER, PorterProtocol.MANAGER_APPLICATION_ID), Porter.availability(context))
     }
 
     /** A newcomer that cannot be spoken to must not silence the connection still serving. */
@@ -204,7 +204,7 @@ internal class PorterHandshakeTest {
 
         assertSame(serving, Porter.connection.value!!.binder)
         assertNull(Porter.incompatibility())
-        assertEquals(PorterAvailability.Connected, Porter.availability(context))
+        assertEquals(PorterAvailability.Connected(PorterBackend.PORTER, PorterProtocol.MANAGER_APPLICATION_ID), Porter.availability(context))
     }
 
     private fun assertRefused(): PorterIncompatibility {

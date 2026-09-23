@@ -10,8 +10,8 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.doReturn
+import org.mockito.Mockito.doThrow
 import org.mockito.Mockito.mock
-import org.mockito.Mockito.verifyNoInteractions
 import org.mockito.Mockito.`when`
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
@@ -31,10 +31,9 @@ internal class PorterAvailabilityTest {
         // Server calls run inline, so each step below has happened when the next one asserts.
         Porter.ioDispatcher = Dispatchers.Unconfined
         `when`(context.packageManager).thenReturn(packages)
-        `when`(packages.getPermissionInfo(PorterProtocol.PERMISSION, 0))
-            .thenThrow(PackageManager.NameNotFoundException())
-        `when`(packages.getPermissionInfo(ShizukuProtocol.PERMISSION, 0))
-            .thenThrow(PackageManager.NameNotFoundException())
+        for (permission in listOf(PorterProtocol.PERMISSION, ShizukuProtocol.PERMISSION, ShizukuProtocol.PLUS_PERMISSION)) {
+            undeclared(permission)
+        }
     }
 
     @After
@@ -46,10 +45,16 @@ internal class PorterAvailabilityTest {
 
     private fun shizukuPermissionOwnedBy(packageName: String) = declared(ShizukuProtocol.PERMISSION, packageName)
 
+    private fun plusPermissionOwnedBy(packageName: String) = declared(ShizukuProtocol.PLUS_PERMISSION, packageName)
+
     private fun declared(permission: String, packageName: String) {
         val info = PermissionInfo()
         info.packageName = packageName
         doReturn(info).`when`(packages).getPermissionInfo(permission, 0)
+    }
+
+    private fun undeclared(permission: String) {
+        doThrow(PackageManager.NameNotFoundException()).`when`(packages).getPermissionInfo(permission, 0)
     }
 
     @Test
@@ -61,28 +66,62 @@ internal class PorterAvailabilityTest {
     fun aForeignOwnerOfThePermissionIsReportedAsUnrecognized() = runBlocking<Unit> {
         permissionOwnedBy("eu.darken.porter.impostor")
 
-        assertEquals(PorterAvailability.InstalledUnrecognized, Porter.availability(context))
+        assertEquals(
+            PorterAvailability.InstalledUnrecognized(PorterBackend.PORTER, "eu.darken.porter.impostor"),
+            Porter.availability(context),
+        )
     }
 
     @Test
     fun theManagerWithoutABinderIsInstalledButNotConnected() = runBlocking<Unit> {
         permissionOwnedBy(PorterProtocol.MANAGER_APPLICATION_ID)
 
-        assertEquals(PorterAvailability.InstalledNotConnected, Porter.availability(context))
+        assertEquals(
+            PorterAvailability.InstalledNotConnected(PorterBackend.PORTER, PorterProtocol.MANAGER_APPLICATION_ID),
+            Porter.availability(context),
+        )
     }
 
     @Test
     fun theShizukuManagerWithoutABinderIsInstalledButNotConnected() = runBlocking<Unit> {
         shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID)
 
-        assertEquals(PorterAvailability.InstalledNotConnected, Porter.availability(context))
+        assertEquals(
+            PorterAvailability.InstalledNotConnected(PorterBackend.SHIZUKU, ShizukuProtocol.MANAGER_APPLICATION_ID),
+            Porter.availability(context),
+        )
     }
 
     @Test
     fun aForeignOwnerOfTheShizukuPermissionIsReportedAsUnrecognized() = runBlocking<Unit> {
         shizukuPermissionOwnedBy("moe.shizuku.impostor")
 
-        assertEquals(PorterAvailability.InstalledUnrecognized, Porter.availability(context))
+        assertEquals(
+            PorterAvailability.InstalledUnrecognized(PorterBackend.SHIZUKU, "moe.shizuku.impostor"),
+            Porter.availability(context),
+        )
+    }
+
+    /** Shizuku+'s Plus flavor declares only its own permission. */
+    @Test
+    fun shizukuPlusAloneIsTheShizukuManager() = runBlocking<Unit> {
+        plusPermissionOwnedBy(ShizukuProtocol.PLUS_MANAGER_APPLICATION_ID)
+
+        assertEquals(
+            PorterAvailability.InstalledNotConnected(PorterBackend.SHIZUKU, ShizukuProtocol.PLUS_MANAGER_APPLICATION_ID),
+            Porter.availability(context),
+        )
+    }
+
+    @Test
+    fun theStockShizukuPermissionIsAskedBeforeShizukuPlus() = runBlocking<Unit> {
+        shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID)
+        plusPermissionOwnedBy(ShizukuProtocol.PLUS_MANAGER_APPLICATION_ID)
+
+        assertEquals(
+            PorterAvailability.InstalledNotConnected(PorterBackend.SHIZUKU, ShizukuProtocol.MANAGER_APPLICATION_ID),
+            Porter.availability(context),
+        )
     }
 
     /** Porter is selected where both are installed, so the answer is about Porter's manager. */
@@ -91,24 +130,39 @@ internal class PorterAvailabilityTest {
         permissionOwnedBy("eu.darken.porter.impostor")
         shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID)
 
-        assertEquals(PorterAvailability.InstalledUnrecognized, Porter.availability(context))
+        assertEquals(
+            PorterAvailability.InstalledUnrecognized(PorterBackend.PORTER, "eu.darken.porter.impostor"),
+            Porter.availability(context),
+        )
     }
 
     /** Without the compatibility artifact no Shizuku binder can arrive, so none is waited for. */
     @Test
     fun aShizukuManagerWithoutTheCompatibilityArtifactIsNotInstalled() = runBlocking<Unit> {
         shizukuPermissionOwnedBy(ShizukuProtocol.MANAGER_APPLICATION_ID)
+        plusPermissionOwnedBy(ShizukuProtocol.PLUS_MANAGER_APPLICATION_ID)
         ShizukuCompat.setPresentForTest(false)
 
         assertEquals(PorterAvailability.NotInstalled, Porter.availability(context))
     }
 
     @Test
-    fun aBinderThatAnswersIsReportedWithoutAskingThePackageManager() = runBlocking<Unit> {
+    fun aBinderThatAnswersIsReportedWithItsBackendAndManager() = runBlocking<Unit> {
+        permissionOwnedBy(PorterProtocol.MANAGER_APPLICATION_ID)
         Porter.onBinderReceived(FakePorterService(), PACKAGE)
 
-        assertEquals(PorterAvailability.Connected, Porter.availability(context))
-        verifyNoInteractions(packages)
+        assertEquals(
+            PorterAvailability.Connected(PorterBackend.PORTER, PorterProtocol.MANAGER_APPLICATION_ID),
+            Porter.availability(context),
+        )
+    }
+
+    /** A server outlives the uninstall of the manager that started it. */
+    @Test
+    fun aBinderThatAnswersWithNoManagerLeftNamesNone() = runBlocking<Unit> {
+        Porter.onBinderReceived(FakePorterService(), PACKAGE)
+
+        assertEquals(PorterAvailability.Connected(PorterBackend.PORTER, null), Porter.availability(context))
     }
 
     private companion object {

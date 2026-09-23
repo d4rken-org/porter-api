@@ -1,10 +1,12 @@
 package eu.darken.porter.sdk
 
+import android.os.Bundle
 import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_NO_CREATE
 import eu.darken.porter.protocol.PorterProtocol.USER_SERVICE_REMOVE
 import eu.darken.porter.sdk.UserServiceTestSupport.args
 import eu.darken.porter.sdk.UserServiceTestSupport.connection
 import eu.darken.porter.sdk.UserServiceTestSupport.peek
+import eu.darken.porter.server.IPorterServiceConnection
 import org.junit.After
 import org.junit.Before
 import org.junit.Assert.assertEquals
@@ -58,14 +60,23 @@ internal class PorterPeekUserServiceTest {
     }
 
     @Test
-    fun aServiceThatIsNotRunningAnswersNullAndNothingIsDropped() = runBlocking<Unit> {
-        val fake = attached()
+    fun aServiceThatIsNotRunningAnswersNullAndTheRegistrationIsDroppedAgain() = runBlocking<Unit> {
+        var bindArgs: Bundle? = null
+        val fake = object : FakePorterService() {
+            override fun addUserService(conn: IPorterServiceConnection?, args: Bundle): Int {
+                bindArgs = args
+                return super.addUserService(conn, args)
+            }
+        }
+        Porter.onBinderReceived(fake, UserServiceTestSupport.PACKAGE)
         fake.userServiceResult = -1
 
         assertNull(connection().peekUserService(args("absent")))
 
-        assertTrue(fake.userServiceArgs!!.getBoolean(USER_SERVICE_NO_CREATE))
-        assertEquals(0, fake.userServiceRemoves)
+        assertTrue(bindArgs!!.getBoolean(USER_SERVICE_NO_CREATE))
+        // A record of a stopped service keeps the callback a no-create bind registers on it.
+        assertEquals(1, fake.userServiceRemoves)
+        assertFalse("dropped, not killed", fake.userServiceArgs!!.getBoolean(USER_SERVICE_REMOVE))
         assertNull(peek(args("absent")))
     }
 }
