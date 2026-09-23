@@ -1,5 +1,6 @@
 package eu.darken.porter.sdk
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.content.BroadcastReceiver
 import android.content.ComponentName
@@ -110,6 +111,8 @@ public open class PorterApiProvider : ContentProvider() {
             scheduleFetch(appContext)
         }
 
+        // The unflagged call runs only below API 33, where the flag does not exist.
+        @SuppressLint("UnspecifiedRegisterReceiverFlag")
         private fun register(appContext: Context) {
             Log.d(TAG, "listening for the provider process's binder")
 
