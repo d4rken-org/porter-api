@@ -97,3 +97,60 @@ jobs:
         with:
           persist-credentials: false
       - uses: gradle/actions/wrapper-validation@3f131e8634966bd73d06cc69884922b02e6faf92 #v6.2.0
+
+  instrumented:
+    name: Instrumented tests (Android ${{ matrix.api }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # The oldest release the SDK supports, for the native load, and the newest, whose non-SDK
+        # interface enforcement decides whether the reflective service lookup still resolves.
+        api: [24, 36]
+        include:
+          # The API 24 image panics in goldfish_dma_mmap about 20s into boot unless GL DMA is off.
+          - api: 24
+            features: -feature -GLDMA,-GLDMA2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 #v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 #v3.2.2
+        with:
+          packages: platform-tools
+      - uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c #v5.0.2
+      - name: Install Android SDK
+        env:
+          EMULATOR_API: ${{ matrix.api }}
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.0" emulator "system-images;android-$EMULATOR_API;google_apis;x86_64"
+      - name: Build the test APKs
+        run: ./gradlew -PincludeShell=true :porsh:assembleDebugAndroidTest :sdk-extras:assembleDebugAndroidTest
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Run the instrumented tests
+        uses: ReactiveCircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d #v2.38.0
+        with:
+          api-level: ${{ matrix.api }}
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -no-audio -no-boot-anim -camera-back none ${{ matrix.features }}
+          disable-animations: true
+          script: ./gradlew -PincludeShell=true :porsh:connectedDebugAndroidTest :sdk-extras:connectedDebugAndroidTest
+      - name: Upload instrumented test reports
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f #v6.0.0
+        with:
+          name: porter-instrumented-api-${{ matrix.api }}
+          path: |
+            porsh/build/outputs/androidTest-results/**
+            sdk-extras/build/outputs/androidTest-results/**
+            porsh/build/reports/androidTests/**
+            sdk-extras/build/reports/androidTests/**
+          if-no-files-found: warn
