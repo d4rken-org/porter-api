@@ -116,6 +116,19 @@ internal class PorterShizukuApiProviderTest {
         assertEquals(14, info.version)
     }
 
+    /** ContentProvider.requireContext() is API 30; this release has only getContext(). */
+    @Test
+    @Config(sdk = [24])
+    fun aBinderDeliveredOnTheOldestSupportedReleaseAttaches() {
+        val fake = FakeShizukuService()
+        fake.bindApplicationReply = FakeShizukuService.replyWithVersion(14)
+
+        provider.call(DELIVERY_METHOD_SEND_BINDER, null, shizukuDelivery(fake))
+
+        assertTrue(connected)
+        assertEquals(PorterBackend.SHIZUKU, Porter.connection.value!!.backend)
+    }
+
     /**
      * The Porter stub rejects the Shizuku interface token at attach, and the session is abandoned on
      * what that throws. The failure is immediate only because the parcel enforces the token; without

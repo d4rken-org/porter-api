@@ -94,6 +94,18 @@ internal class PorterApiProviderTest {
         assertEquals(1, fake.attachCount)
     }
 
+    /** ContentProvider.requireContext() is API 30; this release has only getContext(). */
+    @Test
+    @Config(sdk = [24])
+    fun sendBinderDeliversOnTheOldestSupportedRelease() {
+        val fake = FakePorterService()
+
+        provider.call(DELIVERY_METHOD_SEND_BINDER, null, delivery(fake))
+
+        assertTrue(connected)
+        assertSame(fake, binder)
+    }
+
     @Test
     fun aSecondSendBinderIsIgnoredWhileTheFirstIsAlive() {
         val fake = FakePorterService()
