@@ -47,8 +47,10 @@ public open class PorterApiProvider : ContentProvider() {
 
     final override fun onCreate(): Boolean = true
 
-    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? =
-        endpoint.call(requireContext(), method, extras)
+    override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
+        val context = context ?: return null
+        return endpoint.call(context, method, extras)
+    }
 
     // no other provider methods
     final override fun query(
