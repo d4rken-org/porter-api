@@ -85,6 +85,16 @@ Be aware that, to let the service use the latest code, "Run/Debug configurations
 
 * Per user: the identity is scoped to the calling Android user. A work profile's copy of the app is served by its own process, started with that profile's uid.
 
+### Shell commands
+
+`sdk-extras` runs a command at the server's identity through a user service it ships, `com.example:porter_shell`, on either backend. `connection.exec(context, vararg command, dir)` returns a `PorterShellResult` with `exitCode`, `output` and `errors`, the last two read as UTF-8, once the command exits; the command's input is closed. `connection.startProcess(context, vararg command, dir)` returns a `java.lang.Process` whose streams are pipes to the running command, for input, binary output or a command that runs until `destroy()`. Read its output as it arrives, or the command blocks once a pipe is full.
+
+```kotlin
+val result = connection.exec(context, "sh", "-c", "ls -l /data/local/tmp")
+```
+
+The first call binds the service, and later calls on the same connection reuse that binding until the service or the connection dies. The binding follows the permission like any user service, so a call without a grant throws `PorterSecurityException`. A command that is not found exits with 127, as in a shell. A working directory that does not exist, output that cannot be read, or a service that stops answering throws `PorterShellException`; the `Process` methods that wait throw it too. An empty command throws `IllegalArgumentException`. Cancelling `exec` or `startProcess` returns at once and kills the command together with its process group, which holds everything it started unless a process made a session of its own. So does `destroy()`, and so does the death of the app process that started it.
+
 ### The use of non-SDK interfaces
 
 For "Remote binder call", as the APIs are accessed from the app's process, you may need [AndroidHiddenApiBypass](https://github.com/LSPosed/AndroidHiddenApiBypass) or another way to bypass restrictions on non-SDK interfaces.

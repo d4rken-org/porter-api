@@ -72,6 +72,21 @@ suspend fun onPorterReady(connection: PorterConnection) {
 
 Every call that reaches Porter suspends and is safe on the main thread. A failed call throws a `PorterException`: `PorterSecurityException` when Porter refuses it, usually because access was not granted, and `PorterRemoteException` when the Binder call itself failed. Cancelling a call returns at once, so `withTimeout` works even against a server that stopped answering; a call already sent still takes effect.
 
+## Run a shell command
+
+`sdk-extras` runs commands at Porter's identity, shell or root. It brings `sdk` with it:
+
+```kotlin
+implementation("com.github.d4rken-org.porter-api:sdk-extras:+")
+```
+
+```kotlin
+val result = connection.exec(context, "sh", "-c", "pm list packages -3")
+if (result.exitCode == 0) show(result.output)
+```
+
+The command runs in a user service that `sdk-extras` ships, started on the first call and shared by the calls after it, so there is nothing to declare. Cancelling kills the command and what it started, and `withTimeout` works around it. A command that needs input, writes binary output or keeps running takes `connection.startProcess(context, ...)`, which returns a `java.lang.Process`. A command that is not found exits with 127, as in a shell; a service that cannot start one at all, or stops while it runs, throws `PorterShellException`.
+
 ## Run your own code as shell or root
 
 Porter runs a class of yours in its own process, at its own identity.

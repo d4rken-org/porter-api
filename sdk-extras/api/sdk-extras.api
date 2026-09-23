@@ -1,3 +1,20 @@
+public final class eu/darken/porter/sdk/extras/PorterShell {
+	public static final fun exec (Leu/darken/porter/sdk/PorterConnection;Landroid/content/Context;[Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun exec$default (Leu/darken/porter/sdk/PorterConnection;Landroid/content/Context;[Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public static final fun startProcess (Leu/darken/porter/sdk/PorterConnection;Landroid/content/Context;[Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun startProcess$default (Leu/darken/porter/sdk/PorterConnection;Landroid/content/Context;[Ljava/lang/String;Ljava/lang/String;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+}
+
+public final class eu/darken/porter/sdk/extras/PorterShellException : java/lang/RuntimeException {
+}
+
+public final class eu/darken/porter/sdk/extras/PorterShellResult {
+	public final fun getErrors ()Ljava/lang/String;
+	public final fun getExitCode ()I
+	public final fun getOutput ()Ljava/lang/String;
+	public fun toString ()Ljava/lang/String;
+}
+
 public final class eu/darken/porter/sdk/extras/PorterSystemProperties {
 	public static final fun getSystemPropertyBoolean (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;ZLkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public static final fun getSystemPropertyInt (Leu/darken/porter/sdk/PorterConnection;Ljava/lang/String;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
