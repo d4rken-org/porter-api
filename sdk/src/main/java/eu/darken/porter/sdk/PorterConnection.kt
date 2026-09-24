@@ -348,7 +348,8 @@ public class PorterConnection internal constructor(
      * [System.exit], and call [stopUserService] to send it.
      *
      * A service is per Android user: a work profile's copy of an app is served by its own process,
-     * started with that profile's uid, whatever the personal profile's copy is running.
+     * whatever the personal profile's copy is running. Both run as the server's uid, not the
+     * profile's.
      *
      * The service process is not a valid Android application process. A `Context` obtained there
      * cannot register receivers or reach a content resolver.
