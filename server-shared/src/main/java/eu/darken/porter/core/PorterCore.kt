@@ -39,23 +39,27 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
     private val packagesForUid: IntFunction<List<String>> = (packagesForUid ?: throw NullPointerException("package lookup is null"))
 
     fun enforceCallingPermission(func: String, caller: CallerIdentity, exemption: CallerExemption) {
+        val msg = callingPermissionDenial(func, caller, exemption) ?: return
+        LOGGER.w(msg)
+        throw SecurityException(msg)
+    }
+
+    /** Why [caller] may not run [func], or null when it may. */
+    private fun callingPermissionDenial(func: String, caller: CallerIdentity, exemption: CallerExemption): String? {
         val clientRecord = clientManager.findClient(caller.uid, caller.pid)
 
         if (policy.checkCallerPermission(func, caller, clientRecord)) {
-            return
+            return null
         }
 
         if (clientRecord == null) {
-            val msg = "Permission Denial: " + func + " from pid=" + caller.pid + " is not an attached client"
-            LOGGER.w(msg)
-            throw SecurityException(msg)
+            return "Permission Denial: " + func + " from pid=" + caller.pid + " is not an attached client"
         }
 
         if (!clientRecord.allowed && !exemption.waivesGrant(caller)) {
-            val msg = "Permission Denial: " + func + " from pid=" + caller.pid + " requires permission"
-            LOGGER.w(msg)
-            throw SecurityException(msg)
+            return "Permission Denial: " + func + " from pid=" + caller.pid + " requires permission"
         }
+        return null
     }
 
     fun enforceManagerPermission(func: String, caller: CallerIdentity) {
@@ -240,7 +244,12 @@ class PorterCore<UserServiceMgr : UserServiceManager, ClientMgr : ClientManager<
         val connection: UserServiceConnection = (conn ?: throw NullPointerException("connection is null"))
         val checkedOptions: UserServiceOptions = (options ?: throw NullPointerException("options is null"))
 
-        return userServiceManager.addUserService(caller, connection, checkedOptions)
+        // Checked again under the user-service manager's monitor: a revocation clears the grant
+        // before it sweeps records under that monitor, so a record created after the sweep would
+        // otherwise outlive it.
+        return userServiceManager.addUserService(caller, connection, checkedOptions) {
+            callingPermissionDenial("addUserService", caller, exemption) == null
+        }
     }
 
     fun removeUserService(

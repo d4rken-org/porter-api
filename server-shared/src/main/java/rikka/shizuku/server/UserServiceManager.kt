@@ -118,7 +118,16 @@ abstract class UserServiceManager {
         )
     }
 
-    fun addUserService(caller: CallerIdentity, conn: UserServiceConnection, options: UserServiceOptions): UserServiceBindResult {
+    /**
+     * [stillPermitted] runs with this monitor held, before any record is touched, so it must not wait
+     * on the client manager: revocation holds that monitor while it takes this one.
+     */
+    fun addUserService(
+        caller: CallerIdentity,
+        conn: UserServiceConnection,
+        options: UserServiceOptions,
+        stillPermitted: () -> Boolean = { true },
+    ): UserServiceBindResult {
         val uid = caller.uid
         val appId = caller.appId()
         val userId = caller.userId()
@@ -138,6 +147,9 @@ abstract class UserServiceManager {
         val key = options.key(userId)
 
         synchronized(this) {
+            if (!stillPermitted()) {
+                throw SecurityException("Permission Denial: addUserService from pid=${caller.pid} was revoked")
+            }
             var record = getUserServiceRecordLocked(key)
             // Before the branch: noCreate hands back the existing binder without ever reaching
             // createUserServiceRecordIfNeededLocked, so a check placed there would miss it. Package
