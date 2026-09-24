@@ -146,20 +146,57 @@ static jintArray PorshHost_startHost(
         if (!out_tty) fcntl(stdout_pipe[0], F_SETFD, FD_CLOEXEC);
         if (!err_tty) fcntl(stderr_pipe[0], F_SETFD, FD_CLOEXEC);
 
-        // Each transfer thread closes a copy of its own, so neither can close the master under the
-        // other or under PorshHost, which closes the original once the shell has exited.
+        // Each transfer thread closes a copy of its own, so none can close the master under
+        // another or under PorshHost, which closes the original once the shell has exited. A shell
+        // left without a relay would block on its pty, so it is killed instead.
+        auto pty = [ptmx, pid]() {
+            int fd = fcntl(ptmx, F_DUPFD_CLOEXEC, 0);
+            if (fd == -1) {
+                PLOGE("dup ptmx");
+                kill(pid, SIGKILL);
+            }
+            return fd;
+        };
+
         if (in_tty) {
-            transfer_async(stdin_read, fcntl(ptmx, F_DUPFD_CLOEXEC, 0)/*, func*/);
+            int fd = pty();
+            if (fd != -1) {
+                transfer_async(stdin_read, fd/*, func*/);
+            } else {
+                close(stdin_read);
+            }
         } else {
             transfer_async(stdin_read, stdin_pipe[1]/*, func*/);
             close(stdin_pipe[0]);
         }
 
         if (out_tty) {
-            transfer_async(fcntl(ptmx, F_DUPFD_CLOEXEC, 0), stdout_write, func);
+            int fd = pty();
+            if (fd != -1) {
+                transfer_async(fd, stdout_write, func);
+            } else {
+                close(stdout_write);
+            }
         } else {
             transfer_async(stdout_pipe[0], stdout_write, func);
             close(stdout_pipe[1]);
+
+            if (err_tty) {
+                // stderr is on the pty with no fd to relay it to, so the pty is drained or the
+                // child blocks once its buffer fills (PorshHostTtyTest).
+                int null_fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
+                if (null_fd == -1) {
+                    PLOGE("open /dev/null");
+                    kill(pid, SIGKILL);
+                } else {
+                    int fd = pty();
+                    if (fd != -1) {
+                        transfer_async(fd, null_fd);
+                    } else {
+                        close(null_fd);
+                    }
+                }
+            }
         }
 
         if (!err_tty) {

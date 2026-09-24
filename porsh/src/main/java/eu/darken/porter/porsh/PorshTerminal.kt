@@ -12,7 +12,7 @@ class PorshTerminal @Throws(ErrnoException::class, RemoteException::class) const
     private val argv: Array<String>,
 ) {
 
-    private val tty: Byte = prepare()
+    private val tty: Byte = routable(prepare())
     private var stdin: Array<FileDescriptor>? = null
     private var stdout: Array<FileDescriptor>? = null
     private var stderr: Array<FileDescriptor>? = null
@@ -139,6 +139,13 @@ class PorshTerminal @Throws(ErrnoException::class, RemoteException::class) const
         fun closeFd(fileDescriptor: Array<FileDescriptor>?, i: Int) {
             if (fileDescriptor == null) return
             FileDescriptors.closeSilently(fileDescriptor[i])
+        }
+
+        // `porsh -c cmd | grep x` from a terminal: stderr is a tty but stdout a pipe. Stderr then
+        // goes as a pipe too.
+        internal fun routable(tty: Byte): Byte {
+            if ((tty.toInt() and PorshConstants.ATTY_OUT) != 0) return tty
+            return (tty.toInt() and PorshConstants.ATTY_ERR.inv()).toByte()
         }
 
         // Registered by name and signature from porsh_terminal.cpp, on this class. Public rather
