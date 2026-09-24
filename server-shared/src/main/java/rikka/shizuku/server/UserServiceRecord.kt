@@ -55,6 +55,10 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
     var host: HostProcess? = null
         internal set
 
+    /** The uid of the installation the record was created for, in the caller's own user. */
+    var ownerUid: Int = -1
+        internal set
+
     /**
      * Acquired once, with no monitor held, by whoever publishes the binder. [destroy] needs
      * it and cannot ask the remote for it: that is a synchronous round trip a wedged service never
