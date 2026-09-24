@@ -9,6 +9,7 @@ import android.os.IBinder
 import android.text.format.DateUtils
 import android.util.ArrayMap
 import eu.darken.porter.core.CallerIdentity
+import eu.darken.porter.core.HostProcess
 import eu.darken.porter.core.UserServiceBindResult
 import eu.darken.porter.core.UserServiceConnection
 import eu.darken.porter.core.UserServiceOptions
@@ -16,6 +17,8 @@ import eu.darken.porter.core.UserServiceRemoveResult
 import java.util.Collections
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 import moe.shizuku.server.IShizukuServiceConnection
 import rikka.hidden.compat.PackageManagerApis
 import rikka.shizuku.server.legacy.LegacyServiceConnection
@@ -31,6 +34,12 @@ abstract class UserServiceManager {
 
     /** Separate from [executor] so a cleanup cannot delay a service start. */
     private val cleanupExecutor: Executor = Executors.newSingleThreadExecutor()
+
+    /**
+     * Runs nothing but host kills: the main handler also makes calls into client apps, and one that
+     * never returns must not hold a revoked host's kill back.
+     */
+    private val killer: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
     private val userServiceRecords: MutableMap<String, UserServiceRecord> = Collections.synchronizedMap(ArrayMap())
     private val packageUserServiceRecords: MutableMap<String, MutableList<UserServiceRecord>> =
         Collections.synchronizedMap(ArrayMap())
@@ -98,9 +107,12 @@ abstract class UserServiceManager {
     }
 
     private fun removeUserServiceLocked(record: UserServiceRecord) {
-        val detached = detachUserServiceLocked(record)
+        val detached = detachUserServiceLocked(record) ?: return
+        // Armed before destroy() is even queued: the deadline must not wait on a remote that may never
+        // answer, and it holds this record's host, never whatever claims the key next.
+        detached.host?.let(::scheduleHostKill)
         // destroy() talks to the remote; off the monitor, so a wedged daemon cannot block every bind.
-        if (detached != null) cleanupExecutor.execute { detached.destroy() }
+        cleanupExecutor.execute { detached.destroy() }
     }
 
     /** The Shizuku wire's entry point, answering in the integers of [callingApiVersion]. */
@@ -341,6 +353,32 @@ abstract class UserServiceManager {
         }
     }
 
+    /**
+     * Admits the host process [pid] as the one launched for [token], before it loads the app's code.
+     * The token must name a live record that is starting and has no binder, and the process must run
+     * as [expectedUid]. The first process to claim a record keeps it: a repeat from that same process
+     * is admitted again, any other is refused, and so is a process whose identity cannot be read.
+     */
+    fun claimUserServiceLaunch(token: String?, pid: Int, expectedUid: Int): Boolean {
+        if (token == null) return false
+        val host = captureHost(pid) ?: return false
+        if (host.uid != expectedUid) return false
+        synchronized(this) {
+            val record = userServiceRecords.values.firstOrNull { it.token == token } ?: return false
+            if (record.isRemoved || !record.starting || record.service != null) return false
+            val claimed = record.host
+            if (claimed != null) return claimed.sameAs(host)
+            record.host = host
+            return true
+        }
+    }
+
+    protected open fun captureHost(pid: Int): HostProcess? = HostProcess.capture(pid)
+
+    protected open fun scheduleHostKill(host: HostProcess) {
+        killer.schedule({ host.killIfSame() }, HOST_KILL_GRACE_MILLIS, TimeUnit.MILLISECONDS)
+    }
+
     /** Whether a live, non-removed record carries [token]. */
     fun isUserServiceTokenLive(token: String?): Boolean {
         if (token == null) return false
@@ -376,6 +414,9 @@ abstract class UserServiceManager {
     companion object {
 
         protected val LOGGER = Logger("UserServiceManager")
+
+        /** How long a removed record's host gets to act on destroy() before it is killed. */
+        const val HOST_KILL_GRACE_MILLIS = 3000L
 
         /**
          * The signing flags ride along with the authorising lookup so that whoever records or compares a

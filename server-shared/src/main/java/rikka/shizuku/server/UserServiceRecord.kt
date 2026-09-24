@@ -4,6 +4,7 @@ import android.os.Binder
 import android.os.IBinder
 import android.os.Parcel
 import android.os.RemoteCallbackList
+import eu.darken.porter.core.HostProcess
 import eu.darken.porter.core.UserServiceConnection
 import java.util.UUID
 import rikka.shizuku.ShizukuApiConstants.USER_SERVICE_TRANSACTION_destroy
@@ -41,6 +42,14 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
 
     @Volatile
     private var removed = false
+
+    /**
+     * The host process that claimed this record's launch, set once under the manager monitor. Removing
+     * the record kills it, because a host running the app's code need not honour [destroy].
+     */
+    @Volatile
+    var host: HostProcess? = null
+        internal set
 
     /**
      * Acquired once, with no monitor held, by whoever publishes the binder. [destroy] needs
