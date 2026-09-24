@@ -56,7 +56,13 @@ class UserServiceManagerNeutralTest {
             callingUid: Int,
             use32Bits: Boolean,
             debug: Boolean,
-        ): String = "exit 0"
+        ): String {
+            if (refuseStart) throw SecurityException("refused")
+            return "exit 0"
+        }
+
+        @Volatile
+        var refuseStart = false
 
         override fun onUserServiceRecordCreated(record: UserServiceRecord, packageInfo: PackageInfo) {
             created.add(record)
@@ -275,6 +281,18 @@ class UserServiceManagerNeutralTest {
 
         manager.removeUserServicesForUid(UID)
         assertTrue(own.isRemoved)
+    }
+
+    @Test
+    fun aStartThatThrowsRemovesItsRecordInsteadOfEscapingTheExecutor() {
+        manager.refuseStart = true
+        manager.addUserService(CallerIdentity(UID, PID), RecordingConnection(), bind())
+        val record = manager.created[0]
+
+        val deadline = System.currentTimeMillis() + 5000
+        while (!record.isRemoved && System.currentTimeMillis() < deadline) Thread.sleep(10)
+
+        assertTrue(record.isRemoved)
     }
 
     private companion object {

@@ -194,7 +194,14 @@ abstract class UserServiceManager {
                     newRecord.setStartingTimeout(DateUtils.SECOND_IN_MILLIS * 30)
 
                     val runnable = Runnable {
-                        startUserService(newRecord, key, newRecord.token, packageName, className, processNameSuffix, uid, use32Bits, debug)
+                        try {
+                            startUserService(newRecord, key, newRecord.token, packageName, className, processNameSuffix, uid, use32Bits, debug)
+                        } catch (tr: Throwable) {
+                            // Thrown out of the executor it would reach the server's default handler,
+                            // which kills the process; the record that could not start goes instead.
+                            LOGGER.w(tr, "Unable to start service record %s (%s)", key, newRecord.logId)
+                            newRecord.removeSelf()
+                        }
                     }
                     executor.execute(runnable)
                     return UserServiceBindResult.Bound
