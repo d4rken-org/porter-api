@@ -9,6 +9,7 @@ import eu.darken.porter.core.CallerIdentity
 import eu.darken.porter.core.PorterCore
 import eu.darken.porter.core.UserServiceBindResult
 import eu.darken.porter.core.UserServiceRemoveResult
+import eu.darken.porter.core.confineToFramework
 import eu.darken.porter.porsh.PorshService
 import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.protocol.PorterProtocol.ATTACH_PACKAGE_NAME
@@ -47,7 +48,7 @@ open class PorterEndpoint(private val core: PorterCore<*, *, *>) : IPorterServic
 
     override fun attach(application: IPorterApplication?, args: Bundle?): Bundle {
         val app: IPorterApplication = (application ?: throw NullPointerException("application is null"))
-        val attachArgs: Bundle = (args ?: throw NullPointerException("args is null"))
+        val attachArgs: Bundle = confineToFramework(args ?: throw NullPointerException("args is null"))
 
         val packageName: String = (attachArgs.getString(ATTACH_PACKAGE_NAME) ?: throw NullPointerException("package name is null"))
         val caller = CallerIdentity.fromBinder()

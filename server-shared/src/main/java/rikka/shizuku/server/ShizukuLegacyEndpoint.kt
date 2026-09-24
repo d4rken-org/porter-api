@@ -9,6 +9,7 @@ import androidx.annotation.CallSuper
 import eu.darken.porter.core.CallerIdentity
 import eu.darken.porter.core.ManagerOperations
 import eu.darken.porter.core.PorterCore
+import eu.darken.porter.core.confineToFramework
 import eu.darken.porter.porsh.PorshService
 import moe.shizuku.server.IRemoteProcess
 import moe.shizuku.server.IShizukuApplication
@@ -57,6 +58,7 @@ open class ShizukuLegacyEndpoint(
         if (application == null || args == null) {
             return
         }
+        confineToFramework(args)
 
         val packageName = args.getString(ATTACH_APPLICATION_PACKAGE_NAME) ?: return
         val apiVersion = args.getInt(ATTACH_APPLICATION_API_VERSION, -1)
