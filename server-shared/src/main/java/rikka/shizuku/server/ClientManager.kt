@@ -37,11 +37,9 @@ open class ClientManager<ConfigMgr : ConfigManager>(val configManager: ConfigMgr
 
     open fun attach(identity: CallerIdentity, callback: ClientCallback, packageName: String, apiVersion: Int): ClientRecord? {
         val clientRecord = ClientRecord(identity, callback, packageName, apiVersion)
-
-        val entry = configManager.find(identity.uid)
-        if (entry != null && entry.isAllowed()) {
-            clientRecord.allowed = true
-        }
+        // Decided before the record is published: other binder threads of the same process find it
+        // the moment it is in the list.
+        clientRecord.allowed = startsAllowed(identity, packageName)
 
         val binder = callback.asBinder()
         val deathRecipient = IBinder.DeathRecipient {
@@ -58,6 +56,10 @@ open class ClientManager<ConfigMgr : ConfigManager>(val configManager: ConfigMgr
         clientRecords.add(clientRecord)
         return clientRecord
     }
+
+    /** Whether a new record for [packageName] as [identity] starts out allowed by a stored decision. */
+    protected open fun startsAllowed(identity: CallerIdentity, packageName: String): Boolean =
+        configManager.find(identity.uid)?.isAllowed() == true
 
     /** Runs on a binder thread, after [record]'s process died and the record was dropped. */
     protected open fun onClientDied(record: ClientRecord) {

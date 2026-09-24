@@ -2,6 +2,7 @@ package rikka.shizuku.server
 
 import android.os.IBinder
 import android.os.RemoteException
+import eu.darken.porter.core.CallerIdentity
 import moe.shizuku.server.IShizukuApplication
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -73,6 +74,23 @@ class ClientManagerTest {
         recipient.value.binderDied()
 
         assertNull(clients.findClient(UID, PID))
+    }
+
+    @Test
+    fun aRecordIsPublishedWithTheAllowanceItWasDecidedWith() {
+        `when`(config.find(UID)).thenReturn(entry(true, false))
+        val seenWhenDeciding = ArrayList<ClientRecord?>()
+        clients = object : ClientManager<ConfigManager>(config) {
+            override fun startsAllowed(identity: CallerIdentity, packageName: String): Boolean {
+                seenWhenDeciding.add(findClient(identity.uid, identity.pid))
+                return false
+            }
+        }
+
+        val record = add(UID, PID, application(mock(IBinder::class.java)))!!
+
+        assertEquals(listOf<ClientRecord?>(null), seenWhenDeciding)
+        assertFalse(record.allowed)
     }
 
     @Test
