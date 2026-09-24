@@ -476,9 +476,9 @@ public class PorterConnection internal constructor(
     }
 
     /**
-     * Asks the service to stop, by sending it [UserServiceArgs.TRANSACTION_DESTROY]. The server does
-     * not kill the process, so a service that does not implement that transaction keeps running.
-     * Collectors of [userService] see the flow complete either way.
+     * Asks the service to stop, by sending it [UserServiceArgs.TRANSACTION_DESTROY]. Porter's server
+     * kills a host process still running three seconds after the removal. Collectors of
+     * [userService] see the flow complete either way.
      */
     public suspend fun stopUserService(args: UserServiceArgs) {
         Porter.serverCall { wire.removeUserService(null, args, remove = true) }
