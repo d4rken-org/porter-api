@@ -12,7 +12,7 @@ int make_tty_raw(int fd, termios &old_termios);
 
 int restore_fd(int fd, const termios &old_termios);
 
-void transfer_async(int in, int out, const std::function<void()> &function = nullptr, bool close_in = true, bool close_out = true);
+void transfer_async(int in, int out, const std::function<void(bool)> &function = nullptr, bool close_in = true, bool close_out = true);
 
 int open_ptmx();
 
