@@ -167,7 +167,7 @@ abstract class UserServiceManager {
             // createUserServiceRecordIfNeededLocked, so a check placed there would miss it. Package
             // name ownership alone is satisfied by whoever installed over the name last.
             if (record != null && !canReuseUserServiceRecord(record, packageInfo)) {
-                LOGGER.w("Service record %s (%s) does not belong to the current installation of %s", key, record.token, packageName)
+                LOGGER.w("Service record %s (%s) does not belong to the current installation of %s", key, record.logId, packageName)
                 removeUserServiceLocked(record)
                 record = null
             }
@@ -223,11 +223,11 @@ abstract class UserServiceManager {
         if (record != null) {
             val service = record.service
             if (record.versionCode != versionCode) {
-                LOGGER.v("Remove service record %s (%s) because version code not matched (old=%d, new=%d)", key, record.token, record.versionCode, versionCode)
+                LOGGER.v("Remove service record %s (%s) because version code not matched (old=%d, new=%d)", key, record.logId, record.versionCode, versionCode)
             } else if (!record.starting && (service == null || !service.pingBinder())) {
-                LOGGER.v("Service in record %s (%s) is dead", key, record.token)
+                LOGGER.v("Service in record %s (%s) is dead", key, record.logId)
             } else {
-                LOGGER.i("Found existing service record %s (%s)", key, record.token)
+                LOGGER.i("Found existing service record %s (%s)", key, record.logId)
 
                 if (record.daemon != daemon) {
                     record.daemon = daemon
@@ -258,7 +258,7 @@ abstract class UserServiceManager {
         onUserServiceRecordCreated(created, packageInfo)
 
         userServiceRecords[key] = created
-        LOGGER.i("New service record %s (%s): version=%d, daemon=%s, apk=%s", key, created.token, versionCode, daemon.toString(), packageInfo.applicationInfo!!.sourceDir)
+        LOGGER.i("New service record %s (%s): version=%d, daemon=%s, apk=%s", key, created.logId, versionCode, daemon.toString(), packageInfo.applicationInfo!!.sourceDir)
         return created
     }
 
@@ -276,17 +276,17 @@ abstract class UserServiceManager {
         // The task waited on the start executor; whoever removed the record in the meantime wanted
         // the service gone, not started. A removal landing after the second guard still spawns.
         if (record.isRemoved) {
-            LOGGER.v("Service record %s (%s) was removed before it could start", key, token)
+            LOGGER.v("Service record %s (%s) was removed before it could start", key, record.logId)
             return
         }
 
-        LOGGER.v("Starting process for service record %s (%s)...", key, token)
+        LOGGER.v("Starting process for service record %s (%s)...", key, record.logId)
 
         val cmd = getUserServiceStartCmd(record, key, token, packageName, classname, processNameSuffix, callingUid, use32Bits && AbiUtil.has32Bit(), debug)
         val exitCode: Int
         try {
             if (record.isRemoved) {
-                LOGGER.v("Service record %s (%s) was removed before it could start", key, token)
+                LOGGER.v("Service record %s (%s) was removed before it could start", key, record.logId)
                 return
             }
             val process = Runtime.getRuntime().exec("sh")
@@ -318,19 +318,19 @@ abstract class UserServiceManager {
 
     private fun sendUserServiceLocked(binder: IBinder, token: String, interfaceDescriptor: String?) {
         val entry = userServiceRecords.entries.firstOrNull { it.value.token == token }
-            ?: throw IllegalArgumentException("unable to find token $token")
+            ?: throw IllegalArgumentException("no service record for this token")
 
         val record = entry.value
         if (record.isRemoved) {
-            throw IllegalArgumentException("service record for token $token is removed")
+            throw IllegalArgumentException("service record ${record.logId} is removed")
         }
         // One host per record, attaching once: every host runs as the same uid, so a second attach
         // under a live token would let one app's host stand in for another app's service.
         if (record.service != null) {
-            throw IllegalArgumentException("service record for token $token already has a binder")
+            throw IllegalArgumentException("service record ${record.logId} already has a binder")
         }
 
-        LOGGER.v("Received binder for service record %s", token)
+        LOGGER.v("Received binder for service record %s", record.logId)
 
         record.setBinder(binder, interfaceDescriptor)
     }
@@ -407,7 +407,7 @@ abstract class UserServiceManager {
         }
         for (record in snapshot) {
             record.removeSelf()
-            LOGGER.i("Remove user service %s for package %s", record.token, packageName)
+            LOGGER.i("Remove user service %s for package %s", record.logId, packageName)
         }
     }
 
