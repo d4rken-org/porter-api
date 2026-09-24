@@ -58,6 +58,10 @@ jobs:
       # so this step has to stay after it.
       - name: Build a minified consumer without the compatibility artifact
         run: ./gradlew -p tests/consumer -PsdkRepository="$RUNNER_TEMP/porter-maven" assembleRelease
+      - name: Check the user-service constructors survived R8
+        run: |
+          python3 tools/verify-consumer-services.py tests/consumer/build/outputs/apk/release/*.apk \
+            tests/consumer/build/outputs/mapping/release/mapping.txt "$ANDROID_HOME/build-tools/36.0.0/dexdump"
 
   shell:
     name: Porsh shell
