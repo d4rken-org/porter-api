@@ -22,6 +22,9 @@ class ClientRecord(
 
     /** Null unless the client attached through the Shizuku endpoint. */
     val client: IShizukuApplication? = (callback as? LegacyClientCallback)?.application
+
+    /** Read without the client manager's monitor by the user-service manager's admission re-check. */
+    @Volatile
     var allowed: Boolean = false
 
     constructor(uid: Int, pid: Int, client: IShizukuApplication, packageName: String, apiVersion: Int) :

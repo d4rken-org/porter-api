@@ -133,6 +133,14 @@ class UserServiceManagerNeutralTest {
     }
 
     @Test
+    fun bindRevokedBeforeTheMonitorCreatesNoRecord() {
+        assertThrows(SecurityException::class.java) {
+            manager.addUserService(CallerIdentity(UID, PID), RecordingConnection(), bind()) { false }
+        }
+        assertEquals(0, manager.created.size)
+    }
+
+    @Test
     fun attachByTokenStringBroadcastsToANeutralConnection() {
         val connection = RecordingConnection()
         manager.addUserService(CallerIdentity(UID, PID), connection, bind())
