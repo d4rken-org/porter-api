@@ -110,7 +110,7 @@ Porter runs a class of yours in its own process, at its own identity.
 // IMyService.aidl
 interface IMyService {
     void destroy() = 16777114; // Porter sends this to stop the service
-    String readFile(String path);
+    String readFile(String path) = 1;
 }
 ```
 
