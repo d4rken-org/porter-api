@@ -114,6 +114,7 @@ internal class RedSelectionSurvivesAnAttachRaceTest {
         declares(PorterProtocol.MANAGER_APPLICATION_ID, PorterProtocol.PERMISSION)
 
         val providerProcessBinder = GatedShizukuService()
+        declareShizukuProvider(context)
         ShadowContentResolver.registerProviderInternal(
             context.packageName + ShizukuProtocolDelivery.authoritySuffix,
             ProviderProcess(providerProcessBinder),

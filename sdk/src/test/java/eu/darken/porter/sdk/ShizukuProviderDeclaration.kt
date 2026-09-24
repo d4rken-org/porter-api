@@ -18,3 +18,6 @@ internal fun declareShizukuProvider(context: Context, className: String = Porter
     info.authority = context.packageName + ShizukuCompat.AUTHORITY_SUFFIX
     packages.addOrUpdateProvider(info)
 }
+
+/** What the SDK's manifest gives its providers' android:permission. */
+internal const val SHELL_ONLY_PERMISSION = "android.permission.INTERACT_ACROSS_USERS_FULL"

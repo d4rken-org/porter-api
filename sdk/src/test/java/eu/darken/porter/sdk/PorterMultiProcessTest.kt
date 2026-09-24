@@ -153,5 +153,7 @@ internal class PorterMultiProcessTest {
         this.authority = authority
         exported = true
         multiprocess = false
+        readPermission = SHELL_ONLY_PERMISSION
+        writePermission = SHELL_ONLY_PERMISSION
     }
 }
