@@ -153,6 +153,22 @@ class UserServiceManagerNeutralTest {
     }
 
     @Test
+    fun aSecondAttachUnderTheSameTokenIsRefused() {
+        val connection = RecordingConnection()
+        manager.addUserService(CallerIdentity(UID, PID), connection, bind())
+        val record = manager.created[0]
+        val service = liveBinder()
+        manager.attachUserService(service, record.token, DESCRIPTOR)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            manager.attachUserService(liveBinder(), record.token, DESCRIPTOR)
+        }
+
+        assertSame(service, record.service)
+        assertEquals(listOf(service), connection.connected)
+    }
+
+    @Test
     fun removeWithoutTheRemoveFlagUnregistersTheNeutralConnection() {
         val kept = RecordingConnection()
         val dropped = RecordingConnection()
