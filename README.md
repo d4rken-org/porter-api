@@ -121,6 +121,8 @@ class MyService : IMyService.Stub() {
 }
 ```
 
+Porter constructs the class by name, so it has to be public, with a public no-argument constructor or a public one taking a `Context`. The SDK's R8 rules keep both constructors on a class your code references, as `MyService::class.java` below does, so a minified app needs no rule of its own. A class named only in a string needs its own `-keep` rule.
+
 ```kotlin
 val args = UserServiceArgs(
     componentName = ComponentName(this, MyService::class.java),

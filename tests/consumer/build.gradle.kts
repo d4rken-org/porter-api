@@ -18,6 +18,9 @@ android {
         versionCode = 1
         versionName = "1"
     }
+    buildFeatures {
+        aidl = true
+    }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
