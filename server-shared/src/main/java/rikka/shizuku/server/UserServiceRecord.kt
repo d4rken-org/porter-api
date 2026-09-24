@@ -7,6 +7,7 @@ import android.os.RemoteCallbackList
 import eu.darken.porter.core.HostProcess
 import eu.darken.porter.core.UserServiceConnection
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 import rikka.shizuku.ShizukuApiConstants.USER_SERVICE_TRANSACTION_destroy
 import rikka.shizuku.server.util.HandlerUtil
 import rikka.shizuku.server.util.Logger
@@ -22,13 +23,16 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
                 return
             }
 
-            LOGGER.v("Remove service record %s since it does not run as a daemon and all connections are gone", token)
+            LOGGER.v("Remove service record %s since it does not run as a daemon and all connections are gone", logId)
             removeSelf()
         }
     }
 
     private val deathRecipient: IBinder.DeathRecipient
     var token: String = UUID.randomUUID().toString() + "-" + System.currentTimeMillis()
+
+    /** Names the record in logs, which every host process can read, in place of [token]. */
+    val logId: String = "#" + NEXT_LOG_ID.incrementAndGet()
     var service: IBinder? = null
     val callbacks: RemoteCallbackList<UserServiceConnection> = ConnectionList()
     var daemon: Boolean = daemon
@@ -61,23 +65,23 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
 
     init {
         deathRecipient = IBinder.DeathRecipient {
-            LOGGER.v("Binder for service record %s is dead", token)
+            LOGGER.v("Binder for service record %s is dead", logId)
             removeSelf()
         }
     }
 
     fun setStartingTimeout(timeoutMillis: Long) {
         if (starting) {
-            LOGGER.w("Service record %s is already starting", token)
+            LOGGER.w("Service record %s is already starting", logId)
             return
         }
 
-        LOGGER.v("Set starting timeout for service record %s: %d", token, timeoutMillis)
+        LOGGER.v("Set starting timeout for service record %s: %d", logId, timeoutMillis)
 
         starting = true
         val callback = Runnable {
             if (!removed && starting) {
-                LOGGER.w("Service record %s is not started in %d ms", token, timeoutMillis)
+                LOGGER.w("Service record %s is not started in %d ms", logId, timeoutMillis)
                 removeSelf()
             }
         }
@@ -98,7 +102,7 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
     val isRemoved: Boolean get() = removed
 
     fun setBinder(binder: IBinder, interfaceDescriptor: String?) {
-        LOGGER.v("Binder received for service record %s", token)
+        LOGGER.v("Binder received for service record %s", logId)
 
         startTimeoutCallback?.let { HandlerUtil.mainHandler.removeCallbacks(it) }
 
@@ -108,14 +112,14 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
         try {
             binder.linkToDeath(deathRecipient, 0)
         } catch (tr: Throwable) {
-            LOGGER.w("linkToDeath %s", token)
+            LOGGER.w("linkToDeath %s", logId)
         }
 
         broadcastBinderReceived()
     }
 
     fun broadcastBinderReceived() {
-        LOGGER.v("Broadcast binder received for service record %s", token)
+        LOGGER.v("Broadcast binder received for service record %s", logId)
 
         val service = service
         val count = callbacks.beginBroadcast()
@@ -123,21 +127,21 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
             try {
                 callbacks.getBroadcastItem(i).connected(checkNotNull(service))
             } catch (e: Throwable) {
-                LOGGER.w("Failed to call connected %s", token)
+                LOGGER.w("Failed to call connected %s", logId)
             }
         }
         callbacks.finishBroadcast()
     }
 
     fun broadcastBinderDied() {
-        LOGGER.v("Broadcast binder died for service record %s", token)
+        LOGGER.v("Broadcast binder died for service record %s", logId)
 
         val count = callbacks.beginBroadcast()
         for (i in 0 until count) {
             try {
                 callbacks.getBroadcastItem(i).died()
             } catch (e: Throwable) {
-                LOGGER.w("Failed to call died %s", token)
+                LOGGER.w("Failed to call died %s", logId)
             }
         }
         callbacks.finishBroadcast()
@@ -152,7 +156,7 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
                 try {
                     service.unlinkToDeath(deathRecipient, 0)
                 } catch (tr: Throwable) {
-                    LOGGER.w("unlinkToDeath %s", token)
+                    LOGGER.w("unlinkToDeath %s", logId)
                 }
             }
 
@@ -165,7 +169,7 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
                     data.writeInterfaceToken(interfaceDescriptor)
                     service.transact(USER_SERVICE_TRANSACTION_destroy, data, reply, Binder.FLAG_ONEWAY)
                 } catch (e: Throwable) {
-                    LOGGER.w("Failed to call destroy %s", token)
+                    LOGGER.w("Failed to call destroy %s", logId)
                 } finally {
                     data.recycle()
                     reply.recycle()
@@ -173,7 +177,7 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
             } else if (service != null) {
                 // Parcel.writeInterfaceToken(null) reaches a JNI null check that aborts the process,
                 // which no catch here would see.
-                LOGGER.w("No interface descriptor for service record %s, cannot request destroy", token)
+                LOGGER.w("No interface descriptor for service record %s, cannot request destroy", logId)
             } else {
                 // Nothing was delivered that a caller could watch die, so this is the only way it
                 // learns the binding ended.
@@ -186,5 +190,7 @@ abstract class UserServiceRecord(val versionCode: Int, daemon: Boolean) {
 
     companion object {
         protected val LOGGER = Logger("UserServiceRecord")
+
+        private val NEXT_LOG_ID = AtomicInteger()
     }
 }
