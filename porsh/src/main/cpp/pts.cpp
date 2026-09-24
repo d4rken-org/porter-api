@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <android/log.h>
 #include <pthread.h>
+#include <poll.h>
 #include <sys/sendfile.h>
 #include <functional>
 #include "logging.h"
@@ -56,15 +57,32 @@ struct transfer_thread_data {
     int out;
     bool close_in;
     bool close_out;
+    bool watch_out;
     std::function<void(bool)> function;
 };
 
-// function is told whether the relay failed rather than reaching the end of its input.
-void transfer(int in, int out, bool close_in, bool close_out, const std::function<void(bool)> &function) {
+// function is told whether the relay failed rather than reaching the end of its input. With
+// watch_out, out losing its reader counts as a failure even while in has nothing to send.
+void transfer(int in, int out, bool close_in, bool close_out, bool watch_out,
+              const std::function<void(bool)> &function) {
     char buf[8192];
     int len;
     bool failed = false;
-    while ((len = TEMP_FAILURE_RETRY(read(in, buf, 8192))) > 0) {
+    while (true) {
+        if (watch_out) {
+            pollfd fds[] = {{in, POLLIN, 0}, {out, 0, 0}};
+            if (TEMP_FAILURE_RETRY(poll(fds, 2, -1)) == -1) {
+                failed = true;
+                break;
+            }
+            if (fds[1].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+                failed = true;
+                break;
+            }
+        }
+        if ((len = TEMP_FAILURE_RETRY(read(in, buf, 8192))) <= 0) {
+            break;
+        }
         if (write_full(out, buf, len) == -1) {
             //PLOGE("write");
             failed = true;
@@ -80,14 +98,15 @@ void transfer(int in, int out, bool close_in, bool close_out, const std::functio
 
 static void *transfer_thread(void *_data) {
     auto data = (transfer_thread_data *) _data;
-    transfer(data->in, data->out, data->close_in, data->close_out, data->function);
+    transfer(data->in, data->out, data->close_in, data->close_out, data->watch_out, data->function);
     delete data;
     return nullptr;
 }
 
-void transfer_async(int in, int out, const std::function<void(bool)> &function, bool close_in, bool close_out) {
+void transfer_async(int in, int out, const std::function<void(bool)> &function, bool close_in, bool close_out,
+                    bool watch_out) {
     pthread_t pthread;
-    auto *data = new transfer_thread_data{in, out, close_in, close_out, function};
+    auto *data = new transfer_thread_data{in, out, close_in, close_out, watch_out, function};
     int err = pthread_create(&pthread, nullptr, transfer_thread, data);
     if (err != 0) {
         errno = err;
