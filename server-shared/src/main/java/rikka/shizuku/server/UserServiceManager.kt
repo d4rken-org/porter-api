@@ -312,6 +312,11 @@ abstract class UserServiceManager {
         if (record.isRemoved) {
             throw IllegalArgumentException("service record for token $token is removed")
         }
+        // One host per record, attaching once: every host runs as the same uid, so a second attach
+        // under a live token would let one app's host stand in for another app's service.
+        if (record.service != null) {
+            throw IllegalArgumentException("service record for token $token already has a binder")
+        }
 
         LOGGER.v("Received binder for service record %s", token)
 
