@@ -73,7 +73,7 @@ static jint PorshTerminal_start(
 
     // One transfer per remote stream we have to drain before the process is done.
     auto pending = std::make_shared<std::atomic_int>(err_tty ? 1 : 2);
-    auto func = [=]() {
+    auto func = [=](bool) {
         if (pending->fetch_sub(1) != 1) {
             return;
         }

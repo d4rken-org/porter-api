@@ -6,6 +6,7 @@ import android.system.OsConstants
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import java.io.File
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -72,6 +73,55 @@ class PorshHostTtyTest {
             probes.forEach { Os.fstat(it.fileDescriptor) }
         } finally {
             probes.forEach { it.close() }
+        }
+    }
+
+    /** The pty relay ends as the child exits; that alone must not reach the child as a SIGKILL. */
+    @Test
+    fun ttyChild_keepsItsExitCode() {
+        System.loadLibrary("porsh")
+        repeat(20) { run ->
+            val stdin = ParcelFileDescriptor.createPipe()
+            val stdout = ParcelFileDescriptor.createPipe()
+            val all = PorshConstants.ATTY_IN or PorshConstants.ATTY_OUT or PorshConstants.ATTY_ERR
+            val host = PorshHost(
+                arrayOf("-c", "printf x; exit 7"), null, null, all.toByte(),
+                stdin[0], stdout[1], null,
+            )
+
+            host.start()
+            try {
+                assertEquals("run $run", 7, host.awaitExitCode(10_000))
+            } finally {
+                if (!host.hasExited()) Os.kill(-host.pid, OsConstants.SIGKILL)
+                stdin[1].close()
+                stdout[0].close()
+            }
+        }
+    }
+
+    /** A client that stops reading is gone; its child must not outlive it. */
+    @Test
+    fun clientGone_killsAWritingChild() {
+        System.loadLibrary("porsh")
+        val stdin = ParcelFileDescriptor.createPipe()
+        val stdout = ParcelFileDescriptor.createPipe()
+        val stderr = ParcelFileDescriptor.createPipe()
+        val host = PorshHost(
+            arrayOf("-c", "while :; do printf x; done"), null, null, 0,
+            stdin[0], stdout[1], stderr[1],
+        )
+
+        // Closed before the fork, or a copy the shell inherits keeps the pipe readable.
+        stdout[0].close()
+        host.start()
+        try {
+            host.awaitExitCode(10_000)
+            assertTrue(host.hasExited())
+        } finally {
+            if (!host.hasExited()) Os.kill(-host.pid, OsConstants.SIGKILL)
+            stdin[1].close()
+            stderr[0].close()
         }
     }
 }

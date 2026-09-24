@@ -56,15 +56,18 @@ struct transfer_thread_data {
     int out;
     bool close_in;
     bool close_out;
-    std::function<void()> function;
+    std::function<void(bool)> function;
 };
 
-void transfer(int in, int out, bool close_in, bool close_out, const std::function<void()> &function) {
+// function is told whether the relay failed rather than reaching the end of its input.
+void transfer(int in, int out, bool close_in, bool close_out, const std::function<void(bool)> &function) {
     char buf[8192];
     int len;
+    bool failed = false;
     while ((len = TEMP_FAILURE_RETRY(read(in, buf, 8192))) > 0) {
         if (write_full(out, buf, len) == -1) {
             //PLOGE("write");
+            failed = true;
             break;
         }
     }
@@ -72,7 +75,7 @@ void transfer(int in, int out, bool close_in, bool close_out, const std::functio
 
     if (close_in) close(in);
     if (close_out) close(out);
-    if (function) function();
+    if (function) function(failed);
 }
 
 static void *transfer_thread(void *_data) {
@@ -82,10 +85,20 @@ static void *transfer_thread(void *_data) {
     return nullptr;
 }
 
-void transfer_async(int in, int out, const std::function<void()> &function, bool close_in, bool close_out) {
+void transfer_async(int in, int out, const std::function<void(bool)> &function, bool close_in, bool close_out) {
     pthread_t pthread;
     auto *data = new transfer_thread_data{in, out, close_in, close_out, function};
-    pthread_create(&pthread, nullptr, transfer_thread, data);
+    int err = pthread_create(&pthread, nullptr, transfer_thread, data);
+    if (err != 0) {
+        errno = err;
+        PLOGE("pthread_create");
+        delete data;
+        if (close_in) close(in);
+        if (close_out) close(out);
+        if (function) function(true);
+        return;
+    }
+    pthread_detach(pthread);
 }
 
 int open_ptmx() {

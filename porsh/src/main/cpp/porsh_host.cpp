@@ -130,8 +130,10 @@ static jintArray PorshHost_startHost(
         releaseBytes(env, dirBlock, pdir);
 
         auto called = std::make_shared<std::atomic_bool>(false);
-        auto func = [pid, called]() {
-            if (called->exchange(true)) {
+        // Only a relay that failed, not one that reached the end of its input, ends the child
+        // (PorshHostTtyTest.ttyChild_keepsItsExitCode).
+        auto func = [pid, called](bool failed) {
+            if (!failed || called->exchange(true)) {
                 return;
             }
 
