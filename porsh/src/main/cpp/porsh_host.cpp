@@ -183,9 +183,9 @@ static jintArray PorshHost_startHost(
             transfer_async(stdout_pipe[0], stdout_write, func);
             close(stdout_pipe[1]);
 
-            if (err_tty) {
-                // stderr is on the pty with no fd to relay it to, so the pty is drained or the
-                // child blocks once its buffer fills (PorshHostTtyTest).
+            if (in_tty || err_tty) {
+                // Nothing else reads this pty, yet stderr or /dev/tty writes land on it, so it is
+                // drained or the child blocks once its buffer fills (PorshHostTtyTest).
                 int null_fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
                 if (null_fd == -1) {
                     PLOGE("open /dev/null");

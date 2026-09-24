@@ -147,4 +147,28 @@ class PorshHostTtyTest {
             stderr[0].close()
         }
     }
+
+    /** A pty that stdout is not on still has to be read, or writes to /dev/tty block the child. */
+    @Test
+    fun ttyStdinOnly_doesNotBlockWritesToTheTerminal() {
+        System.loadLibrary("porsh")
+        val stdin = ParcelFileDescriptor.createPipe()
+        val stdout = ParcelFileDescriptor.createPipe()
+        val stderr = ParcelFileDescriptor.createPipe()
+        val host = PorshHost(
+            arrayOf("-c", "dd if=/dev/zero bs=4096 count=256 > /dev/tty 2>/dev/null; printf done"),
+            null, null, PorshConstants.ATTY_IN.toByte(), stdin[0], stdout[1], stderr[1],
+        )
+
+        host.start()
+        try {
+            assertEquals(0, host.awaitExitCode(10_000))
+        } finally {
+            if (!host.hasExited()) Os.kill(-host.pid, OsConstants.SIGKILL)
+            stdin[1].close()
+            stderr[0].close()
+        }
+        val output = ParcelFileDescriptor.AutoCloseInputStream(stdout[0]).use { it.readBytes() }
+        assertEquals("done", output.decodeToString())
+    }
 }
