@@ -124,4 +124,27 @@ class PorshHostTtyTest {
             stderr[0].close()
         }
     }
+
+    /** A signal ends the shell with 128 plus its number, as a shell reports it. */
+    @Test
+    fun signalledChild_reports128PlusTheSignal() {
+        System.loadLibrary("porsh")
+        val stdin = ParcelFileDescriptor.createPipe()
+        val stdout = ParcelFileDescriptor.createPipe()
+        val stderr = ParcelFileDescriptor.createPipe()
+        val host = PorshHost(
+            arrayOf("-c", "kill -TERM $$"), null, null, 0,
+            stdin[0], stdout[1], stderr[1],
+        )
+
+        host.start()
+        try {
+            assertEquals(128 + OsConstants.SIGTERM, host.awaitExitCode(10_000))
+        } finally {
+            if (!host.hasExited()) Os.kill(-host.pid, OsConstants.SIGKILL)
+            stdin[1].close()
+            stdout[0].close()
+            stderr[0].close()
+        }
+    }
 }
