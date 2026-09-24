@@ -89,7 +89,7 @@ void transfer_async(int in, int out, const std::function<void()> &function, bool
 }
 
 int open_ptmx() {
-    int fd = open("/dev/ptmx", O_RDWR);
+    int fd = open("/dev/ptmx", O_RDWR | O_CLOEXEC);
     if (fd == -1) {
         return -1;
     }

@@ -139,15 +139,24 @@ static jintArray PorshHost_startHost(
             kill(pid, SIGKILL);
         };
 
+        // The ends this server keeps for the session's lifetime, close-on-exec from here on so the
+        // shells of later sessions do not inherit them. Set after the fork: the shell's own copies
+        // stay as the child sets them up.
+        if (!in_tty) fcntl(stdin_pipe[1], F_SETFD, FD_CLOEXEC);
+        if (!out_tty) fcntl(stdout_pipe[0], F_SETFD, FD_CLOEXEC);
+        if (!err_tty) fcntl(stderr_pipe[0], F_SETFD, FD_CLOEXEC);
+
+        // Each transfer thread closes a copy of its own, so neither can close the master under the
+        // other or under PorshHost, which closes the original once the shell has exited.
         if (in_tty) {
-            transfer_async(stdin_read, ptmx/*, func*/);
+            transfer_async(stdin_read, fcntl(ptmx, F_DUPFD_CLOEXEC, 0)/*, func*/);
         } else {
             transfer_async(stdin_read, stdin_pipe[1]/*, func*/);
             close(stdin_pipe[0]);
         }
 
         if (out_tty) {
-            transfer_async(ptmx, stdout_write, func);
+            transfer_async(fcntl(ptmx, F_DUPFD_CLOEXEC, 0), stdout_write, func);
         } else {
             transfer_async(stdout_pipe[0], stdout_write, func);
             close(stdout_pipe[1]);

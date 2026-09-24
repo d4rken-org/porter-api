@@ -3,6 +3,7 @@ package eu.darken.porter.porsh
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
+import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -21,7 +22,10 @@ open class PorshHost(
     private val stderr: Int = detachFd(stderr)
     private val exited = CountDownLatch(1)
     private var forkedPid = 0
-    private var ptmx = 0
+
+    /** The pty master, -1 without a tty or once closed; guarded by [ptmxLock]. */
+    private var ptmx = -1
+    private val ptmxLock = Any()
 
     @Volatile
     internal var exitCode: Int = Int.MAX_VALUE
@@ -48,7 +52,7 @@ open class PorshHost(
         )
 
         forkedPid = result[0]
-        ptmx = result[1]
+        synchronized(ptmxLock) { ptmx = result[1] }
 
         Thread { onExited(waitFor(forkedPid)) }.start()
     }
@@ -57,6 +61,7 @@ open class PorshHost(
         get() = forkedPid
 
     internal fun onExited(code: Int) {
+        closePtmx()
         exitCode = code
         exitedAtMillisValue = SystemClock.elapsedRealtime()
         exited.countDown()
@@ -83,7 +88,23 @@ open class PorshHost(
     open fun setWindowSize(size: Long) {
         Log.d(TAG, "setWindowSize")
 
-        setWindowSize(ptmx, size)
+        // Under the lock, so a resize can never reach a descriptor number reused after the close.
+        synchronized(ptmxLock) {
+            if (ptmx < 0) return
+            setWindowSize(ptmx, size)
+        }
+    }
+
+    private fun closePtmx() {
+        synchronized(ptmxLock) {
+            if (ptmx < 0) return
+            try {
+                ParcelFileDescriptor.adoptFd(ptmx).close()
+            } catch (e: IOException) {
+                Log.w(TAG, "close ptmx", e)
+            }
+            ptmx = -1
+        }
     }
 
     companion object {
