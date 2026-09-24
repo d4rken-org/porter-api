@@ -265,6 +265,18 @@ class UserServiceManagerNeutralTest {
         assertTrue(manager.killsArmed.isEmpty())
     }
 
+    @Test
+    fun removingByUidLeavesTheSamePackageInAnotherUserAlone() {
+        manager.addUserService(CallerIdentity(UID, PID), RecordingConnection(), bind())
+        val own = manager.created[0]
+
+        manager.removeUserServicesForUid(UID + 100000)
+        assertFalse(own.isRemoved)
+
+        manager.removeUserServicesForUid(UID)
+        assertTrue(own.isRemoved)
+    }
+
     private companion object {
         const val PACKAGE = "eu.darken.porter.probe"
         const val CLASS = "ProbeService"

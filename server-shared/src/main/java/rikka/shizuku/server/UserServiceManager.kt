@@ -247,6 +247,8 @@ abstract class UserServiceManager {
             }
         }
 
+        created.ownerUid = packageInfo.applicationInfo!!.uid
+
         val packageName = packageInfo.packageName
         var list = packageUserServiceRecords[packageName]
         if (list == null) {
@@ -408,6 +410,21 @@ abstract class UserServiceManager {
         for (record in snapshot) {
             record.removeSelf()
             LOGGER.i("Remove user service %s for package %s", record.logId, packageName)
+        }
+    }
+
+    /**
+     * Removes the records created for [uid] alone, where [removeUserServicesForPackage] reaches the
+     * package in every user.
+     */
+    fun removeUserServicesForUid(uid: Int) {
+        val snapshot: List<UserServiceRecord>
+        synchronized(this) {
+            snapshot = userServiceRecords.values.filter { it.ownerUid == uid }
+        }
+        for (record in snapshot) {
+            record.removeSelf()
+            LOGGER.i("Remove user service %s for uid %d", record.logId, uid)
         }
     }
 

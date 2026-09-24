@@ -44,7 +44,10 @@ open class ClientManager<ConfigMgr : ConfigManager>(val configManager: ConfigMgr
         }
 
         val binder = callback.asBinder()
-        val deathRecipient = IBinder.DeathRecipient { clientRecords.remove(clientRecord) }
+        val deathRecipient = IBinder.DeathRecipient {
+            clientRecords.remove(clientRecord)
+            onClientDied(clientRecord)
+        }
         try {
             binder.linkToDeath(deathRecipient, 0)
         } catch (e: RemoteException) {
@@ -54,6 +57,10 @@ open class ClientManager<ConfigMgr : ConfigManager>(val configManager: ConfigMgr
 
         clientRecords.add(clientRecord)
         return clientRecord
+    }
+
+    /** Runs on a binder thread, after [record]'s process died and the record was dropped. */
+    protected open fun onClientDied(record: ClientRecord) {
     }
 
     companion object {

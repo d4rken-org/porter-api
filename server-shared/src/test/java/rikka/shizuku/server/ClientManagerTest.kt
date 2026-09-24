@@ -76,6 +76,27 @@ class ClientManagerTest {
     }
 
     @Test
+    fun deathIsReportedAfterTheRecordIsDropped() {
+        val died = ArrayList<ClientRecord>()
+        val remainingAtDeath = ArrayList<Int>()
+        clients = object : ClientManager<ConfigManager>(config) {
+            override fun onClientDied(record: ClientRecord) {
+                died.add(record)
+                remainingAtDeath.add(findClients(record.uid).size)
+            }
+        }
+        val binder = mock(IBinder::class.java)
+        val record = add(UID, PID, application(binder))
+
+        val recipient = ArgumentCaptor.forClass(IBinder.DeathRecipient::class.java)
+        verify(binder).linkToDeath(recipient.capture(), eq(0))
+        recipient.value.binderDied()
+
+        assertEquals(listOf(record), died)
+        assertEquals(listOf(0), remainingAtDeath)
+    }
+
+    @Test
     fun addClientReturnsNullWhenLinkToDeathFails() {
         val binder = mock(IBinder::class.java)
         doThrow(RemoteException("dead")).`when`(binder).linkToDeath(any(IBinder.DeathRecipient::class.java), anyInt())
