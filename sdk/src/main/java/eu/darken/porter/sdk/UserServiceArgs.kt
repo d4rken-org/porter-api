@@ -17,8 +17,11 @@ public data class UserServiceArgs(
     /** A debuggable service process is listed when "Show all processes" is enabled. */
     val debuggable: Boolean = false,
     /**
-     * A daemon service runs until it is stopped explicitly; a non-daemon one is stopped when the
-     * process that bound it dies.
+     * A daemon service is not tied to the app's process. A non-daemon one is stopped when the last
+     * process still collecting it dies; one whose collections were all cancelled first runs on like
+     * a daemon. Either ends when it is stopped, the app's permission is revoked, the app is
+     * uninstalled from every user, or the server stops. A Shizuku server below 13.4 keeps a
+     * cancelled binding, so there a non-daemon service still stops with that process.
      */
     val daemon: Boolean = false,
 ) {

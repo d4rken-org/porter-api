@@ -137,7 +137,7 @@ connection.userService(args).collect { binder ->
 }
 ```
 
-`connection.uid` is `2000` for ADB and `0` for root. The service stops when your app's process dies; set `daemon = true` to keep it running until you call `connection.stopUserService(args)`, which sends it `destroy`.
+`connection.uid` is `2000` for ADB and `0` for root. The service stops when your app's process dies while it still collects the flow. Once you cancel the collection it keeps running until you call `connection.stopUserService(args)`, which sends it `destroy`, until your app loses its permission or is uninstalled from every user, or until Porter stops. For a non-daemon service, a Shizuku server below 13.4 is never asked to drop the binding, so after cancellation it remains tied to the callback and ends when that last collecting process dies. A daemon still outlives that process. Set `daemon = true` to keep it running after your app's process dies as well.
 
 The flow completes when the service dies or Porter restarts. To keep one service for the whole app, bind again after either:
 
