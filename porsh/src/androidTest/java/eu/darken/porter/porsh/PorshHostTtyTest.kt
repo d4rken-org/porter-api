@@ -125,26 +125,31 @@ class PorshHostTtyTest {
         }
     }
 
-    /** A signal ends the shell with 128 plus its number, as a shell reports it. */
+    /** Same, for a child that writes nothing, with and without a terminal. */
     @Test
-    fun signalledChild_reports128PlusTheSignal() {
+    fun clientGone_killsAQuietChild() {
         System.loadLibrary("porsh")
-        val stdin = ParcelFileDescriptor.createPipe()
-        val stdout = ParcelFileDescriptor.createPipe()
-        val stderr = ParcelFileDescriptor.createPipe()
-        val host = PorshHost(
-            arrayOf("-c", "kill -TERM $$"), null, null, 0,
-            stdin[0], stdout[1], stderr[1],
-        )
+        val all = PorshConstants.ATTY_IN or PorshConstants.ATTY_OUT or PorshConstants.ATTY_ERR
+        for (tty in listOf(0, all)) {
+            val stdin = ParcelFileDescriptor.createPipe()
+            val stdout = ParcelFileDescriptor.createPipe()
+            val stderr = ParcelFileDescriptor.createPipe()
+            val host = PorshHost(
+                arrayOf("-c", "sleep 30"), null, null, tty.toByte(),
+                stdin[0], stdout[1], if (tty == 0) stderr[1] else null,
+            )
 
-        host.start()
-        try {
-            assertEquals(128 + OsConstants.SIGTERM, host.awaitExitCode(10_000))
-        } finally {
-            if (!host.hasExited()) Os.kill(-host.pid, OsConstants.SIGKILL)
-            stdin[1].close()
             stdout[0].close()
-            stderr[0].close()
+            host.start()
+            try {
+                host.awaitExitCode(10_000)
+                assertTrue("tty $tty", host.hasExited())
+            } finally {
+                if (!host.hasExited()) Os.kill(-host.pid, OsConstants.SIGKILL)
+                stdin[1].close()
+                stderr[0].close()
+                if (tty != 0) stderr[1].close()
+            }
         }
     }
 
@@ -170,5 +175,28 @@ class PorshHostTtyTest {
         }
         val output = ParcelFileDescriptor.AutoCloseInputStream(stdout[0]).use { it.readBytes() }
         assertEquals("done", output.decodeToString())
+    }
+
+    /** A signal ends the shell with 128 plus its number, as a shell reports it. */
+    @Test
+    fun signalledChild_reports128PlusTheSignal() {
+        System.loadLibrary("porsh")
+        val stdin = ParcelFileDescriptor.createPipe()
+        val stdout = ParcelFileDescriptor.createPipe()
+        val stderr = ParcelFileDescriptor.createPipe()
+        val host = PorshHost(
+            arrayOf("-c", "kill -TERM $$"), null, null, 0,
+            stdin[0], stdout[1], stderr[1],
+        )
+
+        host.start()
+        try {
+            assertEquals(128 + OsConstants.SIGTERM, host.awaitExitCode(10_000))
+        } finally {
+            if (!host.hasExited()) Os.kill(-host.pid, OsConstants.SIGKILL)
+            stdin[1].close()
+            stdout[0].close()
+            stderr[0].close()
+        }
     }
 }

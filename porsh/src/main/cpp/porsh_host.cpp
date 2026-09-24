@@ -55,6 +55,16 @@ static void initVectorFromBlock(const char **vector, const char *block, int coun
     vector[count] = nullptr;
 }
 
+// Once the child has called setsid() it leads its own process group, and -pid reaches everything
+// it started. Before that it has started nothing, and only pid reaches it. pid is signalled only
+// while the child is unreaped: after that its number may belong to someone else.
+static void kill_child(pid_t pid) {
+    siginfo_t info{};
+    bool unreaped = waitid(P_PID, pid, &info, WEXITED | WNOHANG | WNOWAIT) == 0;
+    kill(-pid, SIGKILL);
+    if (unreaped) kill(pid, SIGKILL);
+}
+
 static jintArray PorshHost_startHost(
         JNIEnv *env, jclass clazz,
         jbyteArray argBlock, jint argc,
@@ -138,7 +148,7 @@ static jintArray PorshHost_startHost(
             }
 
             LOGW("client dead, kill forked process");
-            kill(pid, SIGKILL);
+            kill_child(pid);
         };
 
         // The ends this server keeps for the session's lifetime, close-on-exec from here on so the
@@ -155,7 +165,7 @@ static jintArray PorshHost_startHost(
             int fd = fcntl(ptmx, F_DUPFD_CLOEXEC, 0);
             if (fd == -1) {
                 PLOGE("dup ptmx");
-                kill(pid, SIGKILL);
+                kill_child(pid);
             }
             return fd;
         };
@@ -175,12 +185,12 @@ static jintArray PorshHost_startHost(
         if (out_tty) {
             int fd = pty();
             if (fd != -1) {
-                transfer_async(fd, stdout_write, func);
+                transfer_async(fd, stdout_write, func, true, true, true);
             } else {
                 close(stdout_write);
             }
         } else {
-            transfer_async(stdout_pipe[0], stdout_write, func);
+            transfer_async(stdout_pipe[0], stdout_write, func, true, true, true);
             close(stdout_pipe[1]);
 
             if (in_tty || err_tty) {
@@ -189,11 +199,13 @@ static jintArray PorshHost_startHost(
                 int null_fd = open("/dev/null", O_WRONLY | O_CLOEXEC);
                 if (null_fd == -1) {
                     PLOGE("open /dev/null");
-                    kill(pid, SIGKILL);
+                    kill_child(pid);
                 } else {
                     int fd = pty();
                     if (fd != -1) {
-                        transfer_async(fd, null_fd);
+                        transfer_async(fd, null_fd, [pid, called](bool failed) {
+                            if (failed && !called->exchange(true)) kill_child(pid);
+                        });
                     } else {
                         close(null_fd);
                     }
