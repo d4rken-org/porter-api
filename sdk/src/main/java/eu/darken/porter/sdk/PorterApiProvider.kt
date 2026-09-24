@@ -192,9 +192,13 @@ public open class PorterApiProvider : ContentProvider() {
         }
 
         internal fun fetchThrough(context: Context, delivery: PorterDelivery): Boolean {
+            val authority = context.packageName + delivery.authoritySuffix
+            // An authority this app does not declare can be claimed by any other app, which would
+            // then answer with a server of its own.
+            if (context.packageManager.resolveContentProvider(authority, 0)?.packageName != context.packageName) return false
             val reply = try {
                 context.contentResolver.call(
-                    Uri.parse("content://" + context.packageName + delivery.authoritySuffix),
+                    Uri.parse("content://$authority"),
                     DELIVERY_METHOD_GET_BINDER, null, Bundle(),
                 )
             } catch (tr: Throwable) {

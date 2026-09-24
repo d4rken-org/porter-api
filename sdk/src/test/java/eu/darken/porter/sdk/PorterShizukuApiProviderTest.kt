@@ -44,6 +44,8 @@ internal class PorterShizukuApiProviderTest {
         info.authority = context.packageName + AUTHORITY_SUFFIX
         info.exported = true
         info.multiprocess = false
+        info.readPermission = SHELL_ONLY_PERMISSION
+        info.writePermission = SHELL_ONLY_PERMISSION
         provider.attachInfo(context, info)
         // A server delivery is taken only on the selected backend, and nothing is installed here.
         Porter.selectBackendForTest(Porter.Selection.SHIZUKU)

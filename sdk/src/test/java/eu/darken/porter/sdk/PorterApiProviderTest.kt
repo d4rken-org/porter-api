@@ -1,7 +1,12 @@
 package eu.darken.porter.sdk
 
+import android.content.ComponentName
+import android.content.ContentProvider
+import android.content.ContentValues
 import android.content.Context
 import android.content.pm.ProviderInfo
+import android.database.Cursor
+import android.net.Uri
 import android.os.Bundle
 import android.os.IBinder
 import eu.darken.porter.protocol.PorterProtocol.DELIVERY_EXTRA_BINDER
@@ -21,6 +26,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import kotlinx.coroutines.runBlocking
 import org.robolectric.shadows.ShadowContentResolver
@@ -54,6 +60,8 @@ internal class PorterApiProviderTest {
         info.authority = context.packageName + PROVIDER_AUTHORITY_SUFFIX
         info.exported = exported
         info.multiprocess = multiprocess
+        info.readPermission = SHELL_ONLY_PERMISSION
+        info.writePermission = SHELL_ONLY_PERMISSION
         provider.attachInfo(context, info)
         return provider
     }
@@ -79,6 +87,8 @@ internal class PorterApiProviderTest {
         info.authority = context.packageName + ShizukuProtocolDelivery.authoritySuffix
         info.exported = true
         info.multiprocess = false
+        info.readPermission = SHELL_ONLY_PERMISSION
+        info.writePermission = SHELL_ONLY_PERMISSION
         shizuku.attachInfo(context, info)
         ShadowContentResolver.registerProviderInternal(info.authority, shizuku)
         return shizuku
@@ -151,6 +161,34 @@ internal class PorterApiProviderTest {
     fun theProviderDeclarationIsEnforced() {
         assertThrows(IllegalStateException::class.java) { attached(PorterApiProvider(), exported = true, multiprocess = true) }
         assertThrows(IllegalStateException::class.java) { attached(PorterApiProvider(), exported = false, multiprocess = false) }
+
+        val open = ProviderInfo()
+        open.authority = context.packageName + PROVIDER_AUTHORITY_SUFFIX
+        open.exported = true
+        open.multiprocess = false
+        assertThrows(IllegalStateException::class.java) { PorterApiProvider().attachInfo(context, open) }
+    }
+
+    /** Answers every fetch with a server of its own, as an app claiming this app's authority would. */
+    private class ImpostorProvider(private val server: IBinder) : ContentProvider() {
+        override fun onCreate(): Boolean = true
+        override fun call(method: String, arg: String?, extras: Bundle?): Bundle =
+            Bundle().apply { putBinder(DELIVERY_EXTRA_BINDER, server) }
+        override fun query(uri: Uri, projection: Array<out String>?, selection: String?, selectionArgs: Array<out String>?, sortOrder: String?): Cursor? = null
+        override fun getType(uri: Uri): String? = null
+        override fun insert(uri: Uri, values: ContentValues?): Uri? = null
+        override fun delete(uri: Uri, selection: String?, selectionArgs: Array<out String>?): Int = 0
+        override fun update(uri: Uri, values: ContentValues?, selection: String?, selectionArgs: Array<out String>?): Int = 0
+    }
+
+    /** This app removed the SDK's declaration, so whoever answers at its authority is someone else. */
+    @Test
+    fun aSecondaryProcessDoesNotFetchFromAnAuthorityItDoesNotDeclare() {
+        shadowOf(context.packageManager).removeProvider(ComponentName(context.packageName, PorterApiProvider::class.java.name))
+        ShadowContentResolver.registerProviderInternal(context.packageName + PROVIDER_AUTHORITY_SUFFIX, ImpostorProvider(FakePorterService()))
+
+        assertFalse(PorterApiProvider.fetchThrough(context, PorterProtocolDelivery))
+        assertNull(binder)
     }
 
     @Test

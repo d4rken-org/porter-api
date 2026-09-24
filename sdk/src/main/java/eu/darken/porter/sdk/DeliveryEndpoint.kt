@@ -17,6 +17,11 @@ internal class DeliveryEndpoint(private val delivery: PorterDelivery) {
     fun attached(info: ProviderInfo) {
         check(!info.multiprocess) { "android:multiprocess must be false" }
         check(info.exported) { "android:exported must be true" }
+        // Acquiring an exported provider needs either permission, so an open side lets any app push
+        // a server binder of its own into this process.
+        check(info.readPermission != null && info.writePermission != null) {
+            "android:permission must be set, to one only the shell holds (android.permission.INTERACT_ACROSS_USERS_FULL)"
+        }
 
         PorterApiProvider.isProviderProcess = true
     }
