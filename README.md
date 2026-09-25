@@ -1,6 +1,6 @@
 # Porter API
 
-The Android SDK for [Porter](https://github.com/d4rken-org/porter), a minimal, maintained Shizuku fork that gives apps ADB access, with optional root support. It builds on [Shizuku-API](https://github.com/thedjchi/Shizuku-API) and keeps the Shizuku Binder protocol on the wire, so an app can add Porter support and keep its Shizuku support.
+The Android SDK for [Porter](https://github.com/d4rken-org/porter), a minimal, maintained [Shizuku](https://github.com/RikkaApps/Shizuku) fork that gives apps ADB access, with optional root support. It builds on [Shizuku-API](https://github.com/RikkaApps/Shizuku-API) and the maintenance work by [thedjchi and contributors](https://github.com/thedjchi/Shizuku-API). It keeps the Shizuku Binder protocol on the wire, so an app can add Porter support and keep its Shizuku support.
 
 ## Quick start
 
