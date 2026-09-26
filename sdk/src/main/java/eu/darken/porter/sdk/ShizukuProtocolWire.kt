@@ -340,6 +340,9 @@ internal class ShizukuProtocolWire(
             } catch (e: SecurityException) {
                 // Raised by readException, which is where the server's refusal arrives.
                 throw PorterSecurityException(e)
+            } catch (e: RuntimeException) {
+                // Also raised by readException: whatever else the server failed the call with.
+                throw PorterRemoteException(e)
             }
             return result(reply)
         } finally {

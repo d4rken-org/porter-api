@@ -92,6 +92,18 @@ internal class PorterFailureTest {
         assertTrue(failure!!.cause is DeadObjectException)
     }
 
+    @Test
+    fun anotherFailureFromThePorterServerIsAPorterRemoteException() = runBlocking<Unit> {
+        val fake = attached()
+        val thrown = IllegalStateException("Not an attached client")
+        fake.failure = thrown
+
+        val failure = failureOf { connection().getSystemProperty("ro.x") }
+
+        assertTrue(failure is PorterRemoteException)
+        assertSame(thrown, failure!!.cause)
+    }
+
     /** A refusal from a Shizuku server arrives inside the reply, and readException raises it. */
     @Test
     fun aRefusalReadFromAShizukuReplyIsAPorterSecurityException() {
@@ -107,6 +119,22 @@ internal class PorterFailureTest {
 
         assertTrue(failure is PorterSecurityException)
         assertEquals("Caller has no permission", failure!!.message)
+    }
+
+    @Test
+    fun anotherFailureReadFromAShizukuReplyIsAPorterRemoteException() {
+        val failing = object : Binder() {
+            override fun onTransact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+                reply!!.writeException(IllegalStateException("Not an attached client"))
+                return true
+            }
+        }
+        val wire = ShizukuProtocolWire(failing, NoCallbacks)
+
+        val failure = runCatching { wire.checkSelfPermission() }.exceptionOrNull()
+
+        assertTrue(failure is PorterRemoteException)
+        assertTrue(failure!!.cause is IllegalStateException)
     }
 
     /** Every call that blocks on the server runs on the IO dispatcher, not on the caller's thread. */

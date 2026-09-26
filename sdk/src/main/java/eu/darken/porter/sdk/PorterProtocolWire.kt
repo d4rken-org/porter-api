@@ -82,7 +82,15 @@ internal class PorterProtocolWire(
     }
 
     override fun transactRemote(data: Parcel, reply: Parcel?, flags: Int) {
-        remote { service.asBinder().transact(TRANSACTION_transactRemote, data, reply, flags) }
+        // Narrower than remote {}: anything else transact raises reaches a wrapped interface's proxy
+        // as the platform raised it.
+        try {
+            service.asBinder().transact(TRANSACTION_transactRemote, data, reply, flags)
+        } catch (e: RemoteException) {
+            throw PorterRemoteException(e)
+        } catch (e: SecurityException) {
+            throw PorterSecurityException(e)
+        }
     }
 
     override fun forward(target: IBinder, code: Int, data: Parcel, reply: Parcel?, flags: Int) {
@@ -136,13 +144,18 @@ internal class PorterProtocolWire(
         return remote { service.removeUserService(adapter, options) }
     }
 
-    /** A generated proxy raises a [SecurityException] only where the server wrote one into the reply. */
+    /**
+     * A generated proxy raises a [SecurityException] only where the server wrote one into the reply,
+     * and any other exception the server answered with as itself.
+     */
     private inline fun <T> remote(call: () -> T): T = try {
         call()
     } catch (e: RemoteException) {
         throw PorterRemoteException(e)
     } catch (e: SecurityException) {
         throw PorterSecurityException(e)
+    } catch (e: RuntimeException) {
+        throw PorterRemoteException(e)
     }
 
     internal companion object {
