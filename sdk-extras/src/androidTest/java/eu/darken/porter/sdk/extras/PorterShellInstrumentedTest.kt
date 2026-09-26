@@ -3,6 +3,8 @@ package eu.darken.porter.sdk.extras
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.system.ErrnoException
+import android.system.Os
 import android.system.OsConstants
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -21,6 +23,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Before
 import org.junit.Test
@@ -156,6 +159,29 @@ internal class PorterShellInstrumentedTest {
             assertFalse("the command's child survived the cancellation", File("/proc/$pid").exists())
         } finally {
             pidFile.delete()
+        }
+    }
+
+    /** The command exits at once and leaves `sleep` in its group; destroy() afterwards signals nothing. */
+    @Test(timeout = 20_000)
+    fun destroyAfterTheCommandExitedLeavesItsGroupAlone() = runBlocking {
+        val process = connection.startProcess("sh", "-c", "sleep 30 >/dev/null 2>&1 & echo \$!")
+        val child = process.inputStream.bufferedReader().readLine().trim()
+        try {
+            assertEquals(0, process.waitFor())
+
+            process.destroy()
+
+            Thread.sleep(500)
+            // A killed child can linger as a zombie, so its state is what tells.
+            val state = File("/proc/$child/stat").readText().substringAfterLast(") ").first()
+            assertTrue("destroy() reached the exited command's group (state $state)", state != 'Z')
+        } finally {
+            try {
+                Os.kill(child.toInt(), OsConstants.SIGKILL)
+            } catch (e: ErrnoException) {
+                // Already gone: the assertion above says why.
+            }
         }
     }
 

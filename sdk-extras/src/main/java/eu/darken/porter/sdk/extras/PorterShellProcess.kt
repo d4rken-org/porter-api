@@ -17,7 +17,9 @@ private const val WAIT_SLICE_MS = 250L
  * The streams are pipes to it. [destroy] sends SIGKILL to the command and everything in its process
  * group, or to the command alone on a device without `/system/bin/setsid`. That gives none of them
  * a chance to clean up, unlike the SIGTERM a local `Process.destroy()` sends; send [signal] first
- * to a command that has to finish something, such as `screenrecord` writing its file. The methods
+ * to a command that has to finish something, such as `screenrecord` writing its file. Once the
+ * command has exited, [destroy] only closes the pipes: what it left running in its group is no
+ * longer reached, by [destroy] or by this app's process dying. The methods
  * [Process] declares block, and throw [PorterShellException] if the shell service stops answering;
  * [waitFor] also ends with `InterruptedException` when its thread is interrupted, so
  * `runInterruptible` makes it cancellable.

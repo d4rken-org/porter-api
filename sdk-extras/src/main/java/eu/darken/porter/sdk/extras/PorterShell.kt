@@ -32,9 +32,9 @@ import kotlinx.coroutines.launch
  * ```
  *
  * The command gets no input. Its output is read as UTF-8; a command that writes binary data or
- * needs input takes [startProcess] instead. Cancelling returns at once and kills the command and its
- * process group with SIGKILL, so `withTimeout` bounds a command that does not end. A command that
- * is not found exits with 127, as in a shell.
+ * needs input takes [startProcess] instead. Cancelling returns at once and, while the command runs,
+ * kills it and its process group with SIGKILL, so `withTimeout` bounds a command that does not end.
+ * A command that is not found exits with 127, as in a shell.
  *
  * The first call starts a user service for this app, which the calls after it reuse. It needs the
  * permission granted, and a refusal throws the SDK's `PorterSecurityException`. A [dir] that does
@@ -159,7 +159,7 @@ internal object ShellCalls {
         processNameSuffix = "porter_shell",
         tag = "eu.darken.porter.sdk.extras.shell",
         // Raised whenever the service changes, so a newer app replaces a running older one.
-        version = 1,
+        version = 2,
     )
 }
 

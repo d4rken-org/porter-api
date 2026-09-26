@@ -54,18 +54,27 @@ internal class PorterShellService : IPorterShellService.Stub() {
 
         /**
          * Sends SIGKILL to [process] and, where it leads its own group, to everything in that group.
-         * A child that made a session of its own is out of reach.
+         * A child that made a session of its own is out of reach, and so is everything once [process]
+         * has exited: its group can no longer be told from a later one that got the same id.
          */
         fun kill(process: Process, grouped: Boolean) {
             val pid = pidOf(process)
-            if (pid != null) {
+            if (pid != null && !hasExited(process)) {
                 try {
                     Os.kill(if (grouped) -pid else pid, OsConstants.SIGKILL)
                 } catch (e: ErrnoException) {
                     // Gone already, or not ours to kill; Process.destroy() below is all that is left.
                 }
             }
+            // After an exit too: it signals nothing then, and closes pipes a leftover may hold open.
             process.destroy()
+        }
+
+        private fun hasExited(process: Process): Boolean = try {
+            process.exitValue()
+            true
+        } catch (e: IllegalThreadStateException) {
+            false
         }
 
         /** `Process[pid=123, hasExited=false]` on Android, `Process[pid=123, exitValue=...]` on a JDK. */
