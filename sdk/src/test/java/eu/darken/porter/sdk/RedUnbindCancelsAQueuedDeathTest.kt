@@ -36,6 +36,7 @@ internal class RedUnbindCancelsAQueuedDeathTest {
     fun inlineServerCalls() {
         // Server calls run inline, so each step below has happened when the next one asserts.
         Porter.ioDispatcher = Dispatchers.Unconfined
+        UserServiceTestSupport.queueEvents()
     }
 
     @After
@@ -60,9 +61,9 @@ internal class RedUnbindCancelsAQueuedDeathTest {
         val (cancelled, connection) = boundAndConnected(backgroundScope, args)
         val kept = RecordingCollector(backgroundScope, connection().userService(args))
 
-        // The service dies. The delivery is queued on the main looper and has not run yet.
+        // The service dies. The delivery is queued and has not run yet.
         connection.died()
-        assertEquals("the death was delivered before the main looper ran it", 0, cancelled.disconnects)
+        assertEquals("the death was delivered before the queue ran it", 0, cancelled.disconnects)
 
         // One caller cancels before that delivery runs: it no longer wants this binding at all.
         cancelled.job.cancelAndJoin()

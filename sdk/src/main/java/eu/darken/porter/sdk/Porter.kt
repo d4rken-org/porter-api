@@ -147,6 +147,18 @@ public object Porter {
     @Volatile
     internal var deliveryExecutor: Executor = defaultDeliveryExecutor
 
+    private val defaultUserServiceExecutor: Executor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "porter-user-service").apply { isDaemon = true }
+    }
+
+    /**
+     * Hands user service events to their collectors one at a time, in the order they were queued,
+     * on a thread of the SDK's own: a main thread blocked on a call that waits for a bind cannot
+     * hold that bind up. A test pins it; [resetForTest] restores it.
+     */
+    @Volatile
+    internal var userServiceExecutor: Executor = defaultUserServiceExecutor
+
     // --------------------- delivery ----------------------
 
     /** Announces a binder that speaks Porter's own wire, for a process that received it outside the provider. */
@@ -505,6 +517,7 @@ public object Porter {
         }
         ioDispatcher = defaultIoDispatcher
         deliveryExecutor = defaultDeliveryExecutor
+        userServiceExecutor = defaultUserServiceExecutor
         ShizukuCompat.resetForTest()
         PorterApiProvider.resetForTest()
     }
