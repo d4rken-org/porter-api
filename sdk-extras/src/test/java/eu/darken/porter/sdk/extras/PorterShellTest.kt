@@ -12,6 +12,13 @@ import eu.darken.porter.sdk.PorterSecurityException
 import eu.darken.porter.sdk.extras.internal.PorterShellService
 import eu.darken.porter.server.IPorterServiceConnection
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -100,6 +107,31 @@ internal class PorterShellTest {
             assertEquals(0, result.exitCode)
         } finally {
             dir.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun aBindCompletesWhileEveryDefaultWorkerWaitsForIt() {
+        // The default size of Dispatchers.Default's pool.
+        val workers = Runtime.getRuntime().availableProcessors().coerceAtLeast(2)
+        val started = CountDownLatch(workers)
+        val release = CountDownLatch(1)
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        try {
+            repeat(workers) {
+                scope.launch {
+                    started.countDown()
+                    release.await()
+                }
+            }
+            assertTrue("not every Default worker got busy", started.await(5, TimeUnit.SECONDS))
+
+            val result = onMain { connection.exec("true") }
+
+            assertEquals(0, result.exitCode)
+        } finally {
+            release.countDown()
+            scope.cancel()
         }
     }
 
