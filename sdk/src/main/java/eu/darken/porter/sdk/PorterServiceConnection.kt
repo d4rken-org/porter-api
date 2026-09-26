@@ -1,9 +1,7 @@
 package eu.darken.porter.sdk
 
 import android.content.ComponentName
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import android.os.RemoteException
 import java.util.EnumMap
 
@@ -68,7 +66,7 @@ internal class PorterServiceConnection(
             if (terminal) return
         }
 
-        MAIN_HANDLER.post {
+        Porter.userServiceExecutor.execute {
             val snapshot = synchronized(registry.lock) { listeners.toList() }
             for (listener in snapshot) {
                 listener.onConnected(componentName, binder)
@@ -105,23 +103,19 @@ internal class PorterServiceConnection(
 
             // Queued while the eviction is still private to this thread: a rebind has to take this
             // same lock to register, so its "connected" cannot reach the queue ahead of this
-            // disconnect. Posting is not executing, the body runs later and outside the lock.
-            MAIN_HANDLER.post {
+            // disconnect. Queueing is not executing, the body runs later and outside the lock.
+            Porter.userServiceExecutor.execute {
                 val snapshot = synchronized(registry.lock) {
                     val delivery = pendingDelivery
                     pendingDelivery = null
                     registry.deliveryDone(this)
                     delivery
-                } ?: return@post
+                } ?: return@execute
 
                 for (listener in snapshot) {
                     listener.onDisconnected(componentName)
                 }
             }
         }
-    }
-
-    private companion object {
-        val MAIN_HANDLER = Handler(Looper.getMainLooper())
     }
 }

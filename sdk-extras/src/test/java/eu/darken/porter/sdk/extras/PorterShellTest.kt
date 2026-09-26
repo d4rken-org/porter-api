@@ -12,7 +12,6 @@ import eu.darken.porter.sdk.PorterSecurityException
 import eu.darken.porter.sdk.extras.internal.PorterShellService
 import eu.darken.porter.server.IPorterServiceConnection
 import java.io.File
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -26,7 +25,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import org.robolectric.shadows.ShadowLooper
 
 /**
  * Commands run through the built-in shell service, here in the test's own process. Robolectric's
@@ -78,25 +76,15 @@ internal class PorterShellTest {
     }
 
     /**
-     * Runs [block] on a thread of its own while this one runs the main looper, which is where the
-     * SDK hands a bound service over.
+     * Blocks this thread, the main one, on [block], as an app bridging to the SDK from blocking code
+     * does: binding the shell service must not need the main looper to run.
      */
-    private fun <T> offMain(timeoutMs: Long = 10_000, block: suspend () -> T): T {
-        val result = AtomicReference<Result<T>?>()
-        val worker = Thread { result.set(runCatching { runBlocking { block() } }) }
-        worker.start()
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (worker.isAlive) {
-            check(System.currentTimeMillis() < deadline) { "the call did not finish within ${timeoutMs}ms" }
-            ShadowLooper.shadowMainLooper().idle()
-            Thread.sleep(5)
-        }
-        return result.get()!!.getOrThrow()
-    }
+    private fun <T> onMain(timeoutMs: Long = 10_000, block: suspend () -> T): T =
+        runBlocking { withTimeout(timeoutMs) { block() } }
 
     @Test
     fun execReturnsTheExitCode() {
-        val result = offMain { connection.exec("sh", "-c", "exit 3") }
+        val result = onMain { connection.exec("sh", "-c", "exit 3") }
 
         assertEquals(3, result.exitCode)
     }
@@ -105,7 +93,7 @@ internal class PorterShellTest {
     fun execRunsInTheGivenDirectory() {
         val dir = java.nio.file.Files.createTempDirectory("porter-shell").toFile()
         try {
-            val result = offMain {
+            val result = onMain {
                 connection.exec("sh", "-c", "[ \"$(pwd -P)\" = '${dir.canonicalPath}' ]", dir = dir.absolutePath)
             }
 
@@ -117,15 +105,15 @@ internal class PorterShellTest {
 
     @Test
     fun callsShareOneBinding() {
-        offMain { connection.exec("true") }
-        offMain { connection.exec("true") }
+        onMain { connection.exec("true") }
+        onMain { connection.exec("true") }
 
         assertEquals(1, server.adds)
     }
 
     @Test
     fun aCommandThatIsNotFoundExitsWith127() {
-        val result = offMain { connection.exec("/nonexistent/porter-shell-test") }
+        val result = onMain { connection.exec("/nonexistent/porter-shell-test") }
 
         assertEquals(127, result.exitCode)
     }
@@ -133,7 +121,7 @@ internal class PorterShellTest {
     @Test
     fun aDirectoryThatDoesNotExistThrows() {
         try {
-            offMain { connection.exec("true", dir = "/nonexistent/porter-shell-test") }
+            onMain { connection.exec("true", dir = "/nonexistent/porter-shell-test") }
             fail("a command started in a directory that does not exist")
         } catch (e: PorterShellException) {
             // expected
@@ -143,7 +131,7 @@ internal class PorterShellTest {
     @Test
     fun anEmptyCommandIsRefusedWithoutBinding() {
         try {
-            offMain { connection.exec() }
+            onMain { connection.exec() }
             fail("an empty command was run")
         } catch (e: IllegalArgumentException) {
             // expected
@@ -156,7 +144,7 @@ internal class PorterShellTest {
     fun aRefusedBindThrowsTheSdksSecurityException() {
         server.refuse = true
         try {
-            offMain { connection.exec("true") }
+            onMain { connection.exec("true") }
             fail("a refused bind ran the command")
         } catch (e: PorterSecurityException) {
             // expected
@@ -169,7 +157,7 @@ internal class PorterShellTest {
         try {
             val started = System.currentTimeMillis()
             try {
-                offMain {
+                onMain {
                     withTimeout(1_000) {
                         connection.exec("sh", "-c", "echo $$ > '${pidFile.absolutePath}'; exec sleep 30")
                     }
@@ -193,7 +181,7 @@ internal class PorterShellTest {
     fun aStartedProcessKnowsItsPid() {
         val pidFile = File.createTempFile("porter-shell", ".pid")
         try {
-            val process = offMain { connection.startProcess("sh", "-c", "echo $$ > '${pidFile.absolutePath}'; exec sleep 30") }
+            val process = onMain { connection.startProcess("sh", "-c", "echo $$ > '${pidFile.absolutePath}'; exec sleep 30") }
             try {
                 val deadline = System.currentTimeMillis() + 5_000
                 while (pidFile.length() == 0L && System.currentTimeMillis() < deadline) Thread.sleep(20)
@@ -209,7 +197,7 @@ internal class PorterShellTest {
 
     @Test
     fun aRunningProcessHasNoExitValueYet() {
-        val process = offMain { connection.startProcess("sleep", "30") }
+        val process = onMain { connection.startProcess("sleep", "30") }
         try {
             try {
                 process.exitValue()

@@ -39,6 +39,7 @@ internal class RedDeathRewoundByARefusedBindTest {
     fun inlineServerCalls() {
         // Server calls run inline, so each step below has happened when the next one asserts.
         Porter.ioDispatcher = Dispatchers.Unconfined
+        UserServiceTestSupport.queueEvents()
     }
 
     @After
