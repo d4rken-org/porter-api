@@ -14,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,6 +31,7 @@ internal class PorterUserServiceFacadeTest {
     fun inlineServerCalls() {
         // Server calls run inline, so each step below has happened when the next one asserts.
         Porter.ioDispatcher = Dispatchers.Unconfined
+        UserServiceTestSupport.queueEvents()
     }
 
     @After
@@ -60,10 +62,8 @@ internal class PorterUserServiceFacadeTest {
 
         val conn = RecordingCollector(backgroundScope, connection().userService(args))
 
-        // Coroutines copy an exception for stack-trace recovery, so the refusal is matched by what
-        // it says rather than by identity.
-        assertEquals(failure.javaClass, conn.failure?.javaClass)
-        assertEquals(failure.message, conn.failure?.message)
+        assertTrue(conn.failure is PorterRemoteException)
+        assertSame(failure, conn.failure?.cause)
         pushConnected(args)
         assertEquals(0, conn.connects)
     }

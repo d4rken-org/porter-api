@@ -17,7 +17,6 @@ import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.asCoroutineDispatcher
@@ -192,7 +191,9 @@ internal class ShellBinding(private val args: UserServiceArgs) {
     }
 
     private fun bind(connection: PorterConnection, result: CompletableDeferred<IBinder>) {
-        ShellCalls.scope.launch(Dispatchers.Default) {
+        // On the SDK's own threads: callers blocking every Dispatchers.Default worker on this bind
+        // would otherwise leave nothing to deliver it.
+        ShellCalls.scope.launch(ShellCalls.blocking) {
             try {
                 connection.userService(args).collect { service ->
                     // Only the first binder is what callers were handed.

@@ -2,6 +2,7 @@ package eu.darken.porter.sdk
 
 import android.os.Binder
 import android.os.IBinder
+import android.os.IInterface
 import android.os.Parcel
 import eu.darken.porter.protocol.PorterProtocol
 import eu.darken.porter.protocol.PorterProtocol.TRANSACTION_transactRemote
@@ -72,6 +73,33 @@ internal class PorterBinderWrapperTest {
         assertEquals(TARGET_CODE, fake.forwardedCode)
         assertEquals(TARGET_FLAGS, fake.forwardedFlags)
         assertEquals(PAYLOAD, fake.forwardedPayload)
+    }
+
+    @Test
+    fun whatTheForwardingTransactThrowsReachesTheWrappedProxyAsItIs() {
+        val thrown = IllegalArgumentException("bad value")
+        val fake = FakePorterService()
+        // Reached through the generated proxy, so the failure is the transport's own, not a reply's.
+        val transport = object : IBinder by fake {
+            override fun queryLocalInterface(descriptor: String): IInterface? = null
+
+            override fun transact(code: Int, data: Parcel, reply: Parcel?, flags: Int): Boolean {
+                if (code == TRANSACTION_transactRemote) throw thrown
+                return fake.transact(code, data, reply, flags)
+            }
+        }
+        Porter.onBinderReceived(transport, "eu.darken.porter.probe")
+
+        val data = Parcel.obtain()
+        try {
+            val failure = runCatching {
+                Porter.connection.value!!.wrap(Binder()).transact(TARGET_CODE, data, null, 0)
+            }.exceptionOrNull()
+
+            assertSame(thrown, failure)
+        } finally {
+            data.recycle()
+        }
     }
 
     private companion object {

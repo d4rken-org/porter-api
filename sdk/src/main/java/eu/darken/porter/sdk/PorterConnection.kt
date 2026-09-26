@@ -29,9 +29,9 @@ import kotlinx.coroutines.flow.distinctUntilChanged
  *
  * Every call here that reaches the server suspends and is safe to make from the main thread. A
  * failed call throws a [PorterException]: [PorterSecurityException] where the server refused it,
- * [PorterRemoteException] where the binder failed. Cancelling a call ends the wait at once, so a
- * timeout around it works against a server that stopped answering; a call already sent still
- * reaches the server and takes effect there.
+ * [PorterRemoteException] where the binder failed or the server failed the call with an exception
+ * of its own. Cancelling a call ends the wait at once, so a timeout around it works against a server
+ * that stopped answering; a call already sent still reaches the server and takes effect there.
  */
 public class PorterConnection internal constructor(
     /** Never reset, so a connection of this process is never mistaken for a later one. */
