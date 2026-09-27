@@ -24,6 +24,9 @@
           - "sdk/**"
           - "sdk-extras/**"
           - "shizuku-compat/**"
+          - "shizuku-bridge/**"
+          - "tests/shizuku-bridge-probe/**"
+          - "tests/shizuku-bridge-target/**"
 
 "c: Service":
   - changed-files:
