@@ -11,12 +11,21 @@ root = Path(sys.argv[1]) / 'com/github/d4rken-org/porter-api'
 version = sys.argv[2]
 group = 'com.github.d4rken-org.porter-api'
 # Module to the same-group dependencies it may declare.
-modules = {'protocol': set(), 'sdk': {'protocol'}, 'sdk-extras': {'sdk'}, 'shizuku-compat': set()}
+modules = {
+    'protocol': set(),
+    'sdk': {'protocol'},
+    'sdk-extras': {'sdk'},
+    'shizuku-compat': set(),
+    'shizuku-bridge': {'sdk', 'sdk-extras'},
+}
+# The bridge feeds upstream's own client, so it depends on its API; nothing may still claim to be it.
+upstream_dependents = {'shizuku-bridge': {'api'}}
 declared_licenses = {
     'protocol': {'Apache License 2.0'},
     'sdk': {'Apache License 2.0', 'MIT License'},
     'sdk-extras': {'Apache License 2.0', 'MIT License'},
     'shizuku-compat': {'MIT License'},
+    'shizuku-bridge': {'Apache License 2.0'},
 }
 # Classes a module may ship outside eu/darken/porter/, spelled out one by one.
 # shizuku-compat exists to supply the one class name the Shizuku server unparcels;
@@ -59,13 +68,16 @@ for module, expected in modules.items():
              for entry in pom.findall('m:licenses/m:license', ns)}
     assert names == declared_licenses[module], (module, names, declared_licenses[module])
     found = set()
+    upstream = set()
     for dependency in pom.findall('m:dependencies/m:dependency', ns):
         dependency_group = dependency.findtext('m:groupId', namespaces=ns)
-        assert dependency_group != 'dev.rikka.shizuku', f'{module} still depends on upstream SDK'
+        if dependency_group == 'dev.rikka.shizuku':
+            upstream.add(dependency.findtext('m:artifactId', namespaces=ns))
         if dependency_group == group:
             found.add(dependency.findtext('m:artifactId', namespaces=ns))
             assert dependency.findtext('m:version', namespaces=ns) == version
     assert found == expected, (module, found, expected)
+    assert upstream == upstream_dependents.get(module, set()), (module, upstream)
     metadata = json.loads(Path(str(base) + '.module').read_text())
     for variant in metadata['variants']:
         if variant['attributes'].get('org.gradle.category') != 'library':
@@ -74,7 +86,8 @@ for module, expected in modules.items():
         for capability in variant.get('capabilities', []):
             assert capability['group'] != 'dev.rikka.shizuku', (module, capability)
         for dependency in variant.get('dependencies', []):
-            assert dependency['group'] != 'dev.rikka.shizuku'
+            if dependency['group'] == 'dev.rikka.shizuku':
+                assert dependency['module'] in upstream_dependents.get(module, set()), (module, dependency['module'])
             if dependency['group'] == group:
                 assert dependency['module'] in expected, (module, variant['name'], dependency['module'])
                 assert dependency['version']['requires'] == version

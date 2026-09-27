@@ -9,7 +9,7 @@ plugins {
 
 val sdkVersion = providers.gradleProperty("version")
     .orElse(providers.environmentVariable("VERSION")).getOrElse("0.2.0")
-val publishedModules = listOf("protocol", "sdk", "sdk-extras", "shizuku-compat")
+val publishedModules = listOf("protocol", "sdk", "sdk-extras", "shizuku-compat", "shizuku-bridge")
 val licenseDetails = mapOf(
     "Apache-2.0" to ("Apache License 2.0" to "https://www.apache.org/licenses/LICENSE-2.0"),
     "MIT" to ("MIT License" to "https://opensource.org/license/mit"),
@@ -21,6 +21,7 @@ val moduleLicenses = mapOf(
     "sdk" to listOf("Apache-2.0", "MIT"),
     "sdk-extras" to listOf("Apache-2.0", "MIT"),
     "shizuku-compat" to listOf("MIT"),
+    "shizuku-bridge" to listOf("Apache-2.0"),
 )
 
 allprojects {
