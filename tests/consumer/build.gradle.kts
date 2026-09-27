@@ -6,6 +6,7 @@ plugins {
 val withLegacySdk = providers.gradleProperty("withLegacySdk").getOrElse("false").toBoolean()
 val withCompat = providers.gradleProperty("withCompat").getOrElse("false").toBoolean()
 val withExtras = providers.gradleProperty("withExtras").getOrElse("false").toBoolean()
+val withBridge = providers.gradleProperty("withBridge").getOrElse("false").toBoolean()
 val sdkVersion = providers.gradleProperty("sdkVersion").getOrElse("0.2.0")
 
 android {
@@ -45,6 +46,12 @@ android {
     if (withExtras) {
         sourceSets["main"].java.srcDir("src/extras/java")
     }
+    if (withBridge) {
+        sourceSets["main"].java.srcDir("src/bridge/java")
+        for (buildType in listOf("debug", "release")) {
+            sourceSets[buildType].manifest.srcFile("src/bridge/AndroidManifest.xml")
+        }
+    }
 }
 
 kotlin {
@@ -64,5 +71,8 @@ dependencies {
     }
     if (withExtras) {
         implementation("com.github.d4rken-org.porter-api:sdk-extras:$sdkVersion")
+    }
+    if (withBridge) {
+        implementation("com.github.d4rken-org.porter-api:shizuku-bridge:$sdkVersion")
     }
 }

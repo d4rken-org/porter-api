@@ -1,0 +1,5 @@
+public final class eu/darken/porter/bridge/PorterShizukuBridge {
+	public static final field INSTANCE Leu/darken/porter/bridge/PorterShizukuBridge;
+	public final fun start (Lkotlinx/coroutines/CoroutineScope;)V
+}
+

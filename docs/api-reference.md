@@ -1,6 +1,6 @@
 # API reference
 
-For dependencies, providers and backend selection, follow the [Porter integration guide](https://porter.darken.eu/developers). This page is the Kotlin surface of the `sdk` and `sdk-extras` artifacts.
+For dependencies, providers and backend selection, follow the [Porter integration guide](https://porter.darken.eu/developers). This page is the Kotlin surface of the `sdk`, `sdk-extras` and `shizuku-bridge` artifacts.
 
 ### The connection
 
@@ -121,3 +121,43 @@ try {
 The first call binds the service, and later calls on the same connection reuse that binding until the service or the connection dies. Binding starts the service's process, so the first call, and the first after the service died, also waits for that start; an app that cannot keep a thread waiting that long can run a short command such as `exec("true")` earlier, elsewhere. The binding follows the permission like any user service, so a call without a grant throws `PorterSecurityException`. A command that is not found exits with 127, as in a shell. A working directory that does not exist, output that cannot be read, or a service that stops answering throws `PorterShellException`; the `Process` methods that wait throw it too. An empty command throws `IllegalArgumentException`.
 
 Cancelling `exec` returns at once and sends SIGKILL to the command's process group, which holds everything it started unless a process made a session of its own; on a device without `/system/bin/setsid`, SIGKILL reaches the command alone. `destroy()` does the same, and so does the death of the app process that started the command. All three apply only while the command runs: once it has exited, none of them reaches what it left running in its group, because the SDK cannot tell that group from a later one that got the same id. Stop those yourself, or have the command wait for them. A local `Process.destroy()` sends SIGTERM instead. Cancelling `startProcess` kills the command only while the start is pending: once it returns, the command is the caller's to stop. `waitFor()` ends with `InterruptedException` when its thread is interrupted, so `runInterruptible(Dispatchers.IO) { process.waitFor() }` lets a timeout end the wait, though not the command. SIGKILL gives nothing a chance to clean up, so stop a command that has to with `signal` and wait for it.
+
+### Shizuku-API bridge
+
+`shizuku-bridge` lets code written against upstream's `dev.rikka.shizuku:api`, including libraries built on it, run on Porter unchanged. It brings `sdk`, `sdk-extras` and `dev.rikka.shizuku:api`. Call `PorterShizukuBridge.start(scope)` once per process, with a scope that lives as long as the process, for example from `Application.onCreate`. From then on every Porter connection the process receives is handed to `rikka.shizuku.Shizuku` as its server binder, and a connection that dies or is replaced reaches it as that binder's death. Calling `start` again while its scope runs does nothing; after the scope ended, it starts again.
+
+```kotlin
+class App : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        PorterShizukuBridge.start(appScope)
+    }
+}
+```
+
+A Porter connection takes the place of a Shizuku server's binder that `rikka.shizuku.Shizuku` already holds, and nothing is handed back to it when Porter goes away: until Porter or the app restarts, or upstream receives another server's binder, the app has no server. When upstream reports a Shizuku server's attach reply while a Porter connection lives, the bridge asynchronously hands upstream the connection again, or its attach reply where upstream still holds it. Until then upstream uses that server, or that server's attach reply with the connection's binder. A server that never replies does not set this off. A server older than Shizuku API 11 switches upstream to its old parcel layout for good; from then on the bridge no longer hands upstream a connection. While upstream uses an older layout, a `ShizukuBinderWrapper` transaction that reaches the bridge throws `IllegalStateException`; the connection's other calls keep working. Reconciliation supports servers of Shizuku API 13: with an older server running next to Porter, a `ShizukuBinderWrapper` transaction built while upstream held that server's reply and delivered just after the bridge restored its own can be misread. An app that keeps upstream's `ShizukuProvider` still reaches a Shizuku server on a device without Porter. An app that wants the Shizuku server instead does not call `start`.
+
+What the bridge answers:
+
+- The attach reply, `getVersion()` (13), `getUid()`, `getSELinuxContext()`, `checkSelfPermission()` and `shouldShowRequestPermissionRationale()`, from the connection.
+- `requestPermission(code)`, through Porter's dialog; the result reaches `OnRequestPermissionResultListener` with the same code.
+- `ShizukuSystemProperties`, `checkRemotePermission`, and every `ShizukuBinderWrapper` transaction, which Porter forwards at its identity.
+- `newProcess`, through the shell service `sdk-extras` ships. A command that is not found exits with 127 instead of failing to start. Closing the process's output stream ends the command's input. Upstream keeps every process it hands out, and until `destroy()` a process keeps stderr open, stdout until the app first asks for it, and stdin until the app asks for it or sees the command exit through `waitFor`, `exitValue` or `alive`. Streams the app got stay open until it closes them, also after `destroy()`: close them, then call `destroy()`.
+- An environment array for `newProcess` replaces the inherited environment, as with `Runtime.exec`. Entries that are not `NAME=VALUE`, or that start with `-`, are dropped. With an environment, a command whose first element starts with `-` or contains `=` is refused with `IllegalArgumentException`.
+
+User services (`bindUserService`, `peekUserService`, `unbindUserService`) and the manager-only calls throw `UnsupportedOperationException`.
+
+A call that asks Porter blocks its caller until Porter answers, as it does against a Shizuku server. What upstream cached from the attach reply is answered without asking, and `requestPermission` returns at once and answers through the listener. The first `newProcess`, and the first after the shell service died, also waits for that service's process to start. A refused call throws `SecurityException`, while a refused `requestPermission` arrives as a denied result. A call to a server that died throws `DeadObjectException`, and a server's own failure arrives as the exception it threw. Upstream's `Shizuku` methods that do not declare `RemoteException` wrap a `DeadObjectException` in a `RuntimeException`, as they do with a Shizuku server. In an app with several processes, each process calls `start` and `PorterApiProvider.requestBinderForNonProviderProcess(context)`; leave `ShizukuProvider.enableMultiProcessSupport` off.
+
+The bridge's service binder answers with this app's grant, so it serves only its own process. A transaction that reaches it from another process, which upstream's `ShizukuProvider` can hand the binder to, throws `SecurityException`. That includes a `ShizukuBinderWrapper` transaction the app makes while it is itself handling a binder call from another process. After checking that caller, make it with the calling identity cleared:
+
+```kotlin
+val token = Binder.clearCallingIdentity()
+try {
+    wrapped.transact(code, data, reply, 0)
+} finally {
+    Binder.restoreCallingIdentity(token)
+}
+```
+
+A `ShizukuRemoteProcess` is `Parcelable`: sending it to another process gives that process access to the command. A running command stays tied to the app process that started it.

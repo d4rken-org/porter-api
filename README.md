@@ -48,6 +48,8 @@ lifecycleScope.launch {
 }
 ```
 
+Code written against Shizuku-API, or a library built on it, can run on Porter unchanged instead: depend on `shizuku-bridge` and call `PorterShizukuBridge.start(appScope)` once per process. The [API reference](docs/api-reference.md#shizuku-api-bridge) says which calls it answers.
+
 A shipping app also tells the user why no connection arrives, handles a permanent denial, and may run its own code or call system services as shell or root. The integration guide covers those.
 
 ## Documentation
@@ -59,4 +61,4 @@ A shipping app also tells the user why no connection arrives, handles a permanen
 
 ## License
 
-Upstream API code is [MIT](LICENSE) with RikkaW attribution; `shizuku-compat` is a Kotlin port of one upstream class under [the same license](shizuku-compat/LICENSE), with the class name and parcel layout unchanged. The Porter SDK (`protocol`, `sdk`, `sdk-extras`) is [Apache 2.0](sdk/LICENSE), with portions of `sdk` and `sdk-extras` derived from the MIT code.
+Upstream API code is [MIT](LICENSE) with RikkaW attribution; `shizuku-compat` is a Kotlin port of one upstream class under [the same license](shizuku-compat/LICENSE), with the class name and parcel layout unchanged. The Porter SDK (`protocol`, `sdk`, `sdk-extras`, `shizuku-bridge`) is [Apache 2.0](sdk/LICENSE), with portions of `sdk` and `sdk-extras` derived from the MIT code.

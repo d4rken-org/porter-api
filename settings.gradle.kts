@@ -33,10 +33,14 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "porter-api"
-include(":aidl", ":shared", ":shizuku-compat", ":protocol", ":manager-protocol", ":sdk", ":sdk-extras")
+include(":aidl", ":shared", ":shizuku-compat", ":protocol", ":manager-protocol", ":sdk", ":sdk-extras", ":shizuku-bridge")
 
 val includeShell = providers.gradleProperty("includeShell").getOrElse("false").toBoolean()
 
 if (includeShell) {
     include(":porsh", ":server-shared")
+}
+
+if (providers.gradleProperty("includeBridgeProbe").getOrElse("false").toBoolean()) {
+    include(":tests:shizuku-bridge-probe", ":tests:shizuku-bridge-target")
 }
