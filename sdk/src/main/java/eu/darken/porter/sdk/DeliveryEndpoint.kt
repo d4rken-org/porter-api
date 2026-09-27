@@ -1,7 +1,6 @@
 package eu.darken.porter.sdk
 
 import android.content.Context
-import android.content.Intent
 import android.content.pm.ProviderInfo
 import android.os.Bundle
 import android.util.Log
@@ -38,8 +37,11 @@ internal class DeliveryEndpoint(private val delivery: PorterDelivery) {
     }
 
     private fun handleSendBinder(context: Context, extras: Bundle) {
-        // A provider call runs on a binder thread, so pinging and attaching here block no one.
-        if (Porter.connection.value?.binder?.pingBinder() == true) {
+        // A provider call runs on a binder thread, so pinging and attaching here block no one. A
+        // binder of the other backend goes on regardless: what to do with it is decided under the
+        // lock that also decides the fate of the live connection.
+        val published = Porter.connection.value
+        if (published != null && published.backend == delivery.backend && published.binder.pingBinder()) {
             Log.d(TAG, "sendBinder is called when already a living binder")
             return
         }
@@ -54,9 +56,7 @@ internal class DeliveryEndpoint(private val delivery: PorterDelivery) {
 
         if (!Porter.onBinderReceived(context, binder, context.packageName, delivery.backend)) return
 
-        // Only a notification: the other processes read the binder from the provider, never from
-        // the broadcast, which below API 33 any app can send to a registered receiver.
-        context.sendBroadcast(Intent(PorterApiProvider.ACTION_BINDER_RECEIVED).setPackage(context.packageName))
+        PorterApiProvider.announceBinder(context)
     }
 
     private fun handleGetBinder(reply: Bundle): Boolean {

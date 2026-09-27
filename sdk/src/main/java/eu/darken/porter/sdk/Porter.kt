@@ -11,6 +11,7 @@ import androidx.annotation.RestrictTo
 import androidx.annotation.RestrictTo.Scope.LIBRARY_GROUP_PREFIX
 import androidx.annotation.VisibleForTesting
 import eu.darken.porter.protocol.PorterProtocol
+import java.util.EnumMap
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.LinkedBlockingQueue
@@ -34,9 +35,9 @@ public object Porter {
     private const val TAG = "Porter"
 
     /**
-     * Guards [current], [latest], [selection] and every connection's death link. Taken outside a
-     * connection's permission lock. Never held across attach, which is the one call here that
-     * blocks in the server.
+     * Guards [current], [latest], [selection], [kept] and every connection's death link. Taken
+     * outside a connection's permission lock. Never held across attach, which is the one call here
+     * that blocks in the server.
      */
     internal val lock: Any = Any()
 
@@ -78,6 +79,22 @@ public object Porter {
 
     private class RejectedDelivery(val binder: IBinder, val why: PorterIncompatibility)
 
+    /**
+     * Per backend, the binder a delivery on it brought while this process was connected on, or had
+     * selected, the other one. A server delivers once per process, so this is the only way back to
+     * that server once the connection that refused it is lost. Guarded by [lock].
+     */
+    private val kept = EnumMap<PorterBackend, KeptBinder>(PorterBackend::class.java)
+
+    private class KeptBinder(
+        val backend: PorterBackend,
+        val binder: IBinder,
+        val context: Context,
+        val packageName: String,
+    ) {
+        val recipient = IBinder.DeathRecipient { Porter.keptBinderDied(this) }
+    }
+
     private val _connection = MutableStateFlow<PorterConnection?>(null)
 
     /**
@@ -86,7 +103,10 @@ public object Porter {
      * completed, and the connection it replaces stays published until then, so a collector never
      * sees null between two live servers and never sees a connection that cannot answer.
      *
-     * A binder arrives again whenever the user restarts the manager while the app is running.
+     * A binder arrives again whenever the user restarts the manager while the app is running. When
+     * the connection's server dies, the backend is selected again. If that is the other backend,
+     * whose server delivered a binder while this connection was selected and still runs, that
+     * binder is taken; otherwise the process waits for the next delivery.
      */
     public val connection: StateFlow<PorterConnection?> = _connection.asStateFlow()
 
@@ -176,7 +196,7 @@ public object Porter {
         // Resolving asks the package manager, so it happens before the lock; the answer decides
         // nothing until it is checked inside, against the connection that is published then.
         val selected = if (newBinder == null) null else selectBackend(context)
-        return onBinderReceived(newBinder, packageName, backend, selected)
+        return onBinderReceived(newBinder, packageName, backend, selected, context)
     }
 
     /** As the delivery above, for a binder the caller already knows this process is entitled to take. */
@@ -189,9 +209,19 @@ public object Porter {
      *
      * @param selected the backend this process resolved for this delivery, or null where the caller
      * delivers a binder it already knows this process is entitled to take.
+     * @param context where a server delivered [newBinder], which keeps it if it is refused for the
+     * other backend; null where nothing is kept.
+     * @param adopting whether [newBinder] is a kept one, taken only while nothing else is.
      * @return whether this call published [newBinder] as the connection
      */
-    private fun onBinderReceived(newBinder: IBinder?, packageName: String, backend: PorterBackend, selected: Selection?): Boolean {
+    private fun onBinderReceived(
+        newBinder: IBinder?,
+        packageName: String,
+        backend: PorterBackend,
+        selected: Selection?,
+        context: Context? = null,
+        adopting: Boolean = false,
+    ): Boolean {
         if (newBinder == null) {
             dropCurrent()
             return false
@@ -199,6 +229,10 @@ public object Porter {
 
         val session: PorterConnection
         synchronized(lock) {
+            // A kept binder stands in for a delivery that never came, so one that did come first,
+            // published or still attaching, is the answer.
+            if (adopting && (current != null || latest != null)) return false
+
             // The same binder delivered twice is the same connection. Attaching again would ask the
             // server for a second grant for it, link a second death recipient, and supersede a
             // replacement that is attaching, so the published connection counts as well as latest.
@@ -210,15 +244,24 @@ public object Porter {
             val published = current
             if (published != null && published.backend != backend) {
                 Log.i(TAG, "ignoring a $backend binder, connected on ${published.backend}")
+                // Kept in the same step as the refusal, so the death of the published connection
+                // cannot come between them and find nothing to take.
+                if (context != null) keep(backend, newBinder, context, packageName)
                 return false
             }
             if (selected != null && selected != selectionOf(backend)) {
                 Log.i(TAG, "ignoring a $backend binder, this process selected $selected")
+                // Selecting nothing leaves no connection to lose, and losing one is when a kept
+                // binder is taken.
+                if (context != null && selected != Selection.NONE) keep(backend, newBinder, context, packageName)
                 return false
             }
 
+            if (adopting) Log.i(TAG, "adopting a kept $backend binder")
             session = PorterConnection(++connections, newBinder, backend, packageName)
             latest = session
+            // The connection watches this binder from here on, and one watch is all it gets.
+            releaseKept(backend, newBinder)
             session.link()
         }
 
@@ -305,6 +348,7 @@ public object Porter {
         if (dropped != null) {
             dropped.markLost()
             runPostDeadHooks()
+            adoptAfterLoss()
         }
     }
 
@@ -342,6 +386,61 @@ public object Porter {
         // On the main queue rather than on the dispatching stack: a collector on the main
         // dispatcher sees the death ahead of whatever the SDK does about it.
         for (hook in hooks) mainHandler.post(hook)
+    }
+
+    // --------------------- kept binders ----------------------
+
+    /** The caller holds [lock]. A binder that is already dead is not kept. */
+    private fun keep(backend: PorterBackend, binder: IBinder, context: Context, packageName: String) {
+        if (kept[backend]?.binder === binder) return
+        val record = KeptBinder(backend, binder, context.applicationContext ?: context, packageName)
+        try {
+            binder.linkToDeath(record.recipient, 0)
+        } catch (e: RemoteException) {
+            return
+        }
+        kept.put(backend, record)?.let { it.binder.unlinkToDeath(it.recipient, 0) }
+        Log.i(TAG, "keeping a $backend binder")
+    }
+
+    /** The caller holds [lock]. */
+    private fun releaseKept(backend: PorterBackend, binder: IBinder) {
+        val record = kept[backend]?.takeIf { it.binder === binder } ?: return
+        kept.remove(backend)
+        record.binder.unlinkToDeath(record.recipient, 0)
+    }
+
+    private fun keptBinderDied(record: KeptBinder) {
+        synchronized(lock) {
+            if (kept[record.backend] !== record) return
+            kept.remove(record.backend)
+            record.binder.unlinkToDeath(record.recipient, 0)
+        }
+    }
+
+    /**
+     * After a published connection was lost and marked so, takes the binder kept for whichever
+     * backend this process selects now. Queued behind the post-death hooks, so the app sees the
+     * death first, and attached off the main thread.
+     */
+    internal fun adoptAfterLoss() {
+        if (synchronized(lock) { kept.isEmpty() }) return
+        mainHandler.post { deliveryExecutor.execute { adoptKept() } }
+    }
+
+    private fun adoptKept() {
+        val context = synchronized(lock) { kept.values.firstOrNull()?.context } ?: return
+        val selected = selectBackend(context)
+        val backend = when (selected) {
+            Selection.PORTER -> PorterBackend.PORTER
+            Selection.SHIZUKU -> PorterBackend.SHIZUKU
+            Selection.NONE -> return
+        }
+        val record = synchronized(lock) { kept[backend] } ?: return
+        if (!record.binder.pingBinder()) return
+        if (onBinderReceived(record.binder, record.packageName, backend, selected, adopting = true)) {
+            PorterApiProvider.announceBinder(record.context)
+        }
     }
 
     // --------------------- lookups ----------------------
@@ -430,7 +529,9 @@ public object Porter {
      *
      * Held constant while a connection is live, and resolved again whenever there is none: a
      * running connection never changes backend, and a process that has none sees an install that
-     * happened after it last asked.
+     * happened after it last asked. Once a connection's server dies, a binder the other backend
+     * delivered while that connection was selected is taken if this resolves to that backend and
+     * the binder's server still runs; otherwise the process waits for the next delivery.
      */
     internal fun selectBackend(context: Context): Selection {
         val pinned: Selection?
@@ -499,6 +600,10 @@ public object Porter {
         }
     }
 
+    /** The binder kept for [backend], if any. */
+    @VisibleForTesting
+    internal fun keptForTest(backend: PorterBackend): IBinder? = synchronized(lock) { kept[backend]?.binder }
+
     /** The published connection, whether or not its binder still answers. */
     @VisibleForTesting
     internal fun currentForTest(): PorterConnection? = synchronized(lock) { current }
@@ -512,6 +617,8 @@ public object Porter {
             selection = null
             selectionForTest = null
             rejected = null
+            for (record in kept.values) record.binder.unlinkToDeath(record.recipient, 0)
+            kept.clear()
             postDeadHooks.clear()
             _connection.value = null
         }

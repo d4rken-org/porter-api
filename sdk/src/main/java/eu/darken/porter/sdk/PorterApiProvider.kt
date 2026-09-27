@@ -139,6 +139,13 @@ public open class PorterApiProvider : ContentProvider() {
             Porter.addPostBinderDeadHook { scheduleFetch(appContext) }
         }
 
+        /** Tells this app's other processes that the provider process published a connection. */
+        internal fun announceBinder(context: Context) {
+            // Only a notification: the other processes read the binder from the provider, never from
+            // the broadcast, which below API 33 any app can send to a registered receiver.
+            context.sendBroadcast(Intent(ACTION_BINDER_RECEIVED).setPackage(context.packageName))
+        }
+
         /** Fetches off the calling thread: the attach behind it blocks, for seconds on the Shizuku wire. */
         private fun scheduleFetch(appContext: Context) {
             if (!fetchQueued.compareAndSet(false, true)) return

@@ -516,7 +516,11 @@ public class PorterConnection internal constructor(
         // waiting on that binder has nothing left to wait for. Outside the lock, as the wire counts
         // its own attach latch down outside its own.
         wire.onPeerDied()
-        if (wasCurrent) markLost()
+        if (wasCurrent) {
+            markLost()
+            // After markLost, so nothing takes this connection's place before its waiters were failed.
+            Porter.adoptAfterLoss()
+        }
     }
 
     override fun toString(): String = "PorterConnection(generation=$generation, backend=$backend)"
