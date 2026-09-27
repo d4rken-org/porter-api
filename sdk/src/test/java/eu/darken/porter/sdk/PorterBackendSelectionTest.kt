@@ -96,7 +96,8 @@ internal class PorterBackendSelectionTest {
 
         assertNull(binder())
         assertEquals(0, ignored.attachCount)
-        assertEquals(0, ignored.deathLinks)
+        assertEquals("kept, and watched so a death empties its slot", 1, ignored.deathLinks)
+        assertSame(ignored, Porter.keptForTest(PorterBackend.SHIZUKU))
     }
 
     @Test
@@ -109,7 +110,8 @@ internal class PorterBackendSelectionTest {
 
         assertNull(binder())
         assertEquals(0, ignored.attachCount)
-        assertEquals(0, ignored.deathLinks)
+        assertEquals("kept, and watched so a death empties its slot", 1, ignored.deathLinks)
+        assertSame(ignored, Porter.keptForTest(PorterBackend.PORTER))
     }
 
     /** Shizuku+'s Plus flavor declares only its own permission and delivers as Shizuku does. */
