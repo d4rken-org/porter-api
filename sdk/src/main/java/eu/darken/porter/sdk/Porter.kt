@@ -35,7 +35,7 @@ public object Porter {
     private const val TAG = "Porter"
 
     /**
-     * Guards [current], [latest], [selection], [kept] and every connection's death link. Taken
+     * Guards [current], [latest], [selection], [kept], [rejected] and every death link. Taken
      * outside a connection's permission lock. Never held across attach, which is the one call here
      * that blocks in the server.
      */
@@ -73,11 +73,14 @@ public object Porter {
 
     /**
      * The last delivered binder, where its attach was refused over versions, and why. Cleared by
-     * the next delivery that publishes or drops a connection. Guarded by [lock].
+     * the next delivery that publishes or drops a connection, and by that binder's death. Guarded
+     * by [lock]; set only through [setRejected].
      */
     private var rejected: RejectedDelivery? = null
 
-    private class RejectedDelivery(val binder: IBinder, val why: PorterIncompatibility)
+    private class RejectedDelivery(val binder: IBinder, val why: PorterIncompatibility) {
+        val recipient = IBinder.DeathRecipient { Porter.rejectedDied(this) }
+    }
 
     /**
      * Per backend, the binder a delivery on it brought while this process was connected on, or had
@@ -109,6 +112,22 @@ public object Porter {
      * binder is taken; otherwise the process waits for the next delivery.
      */
     public val connection: StateFlow<PorterConnection?> = _connection.asStateFlow()
+
+    private val _state = MutableStateFlow<PorterConnectionState>(PorterConnectionState.Disconnected)
+
+    /**
+     * What this process holds: [PorterConnectionState.Connected] with the connection [connection]
+     * publishes, [PorterConnectionState.Incompatible] while a delivery refused over versions came
+     * from a server that still runs, [PorterConnectionState.Disconnected] otherwise. A connection
+     * that serves wins over a refusal. A refusal lasts until a newer refusal replaces it, a
+     * connection is published, or the refused server stops; a later delivery that fails for another
+     * reason, or is ignored, leaves it in place. Each value is one snapshot, so collect this instead
+     * of combining [connection] with something else.
+     *
+     * A refusal is not forwarded to the app's other processes: one that fetches its connection from
+     * this process stays [PorterConnectionState.Disconnected] while this one holds only a refusal.
+     */
+    public val state: StateFlow<PorterConnectionState> = _state.asStateFlow()
 
     /**
      * What the SDK itself does once a death has been published, which is where the SDK's own
@@ -270,12 +289,15 @@ public object Porter {
             val reply = session.wire.attach(packageName)
             val incompatibility = session.wire.incompatibility(reply)
             if (incompatibility != null) {
-                // Nothing to publish: a connection whose server cannot be spoken to would answer
-                // no call. The binder is remembered so availability can say why, and only until
-                // the next delivery says something else.
+                // Nothing to publish as a connection: one whose server cannot be spoken to would
+                // answer no call. The binder is remembered so state and availability can say why,
+                // until the next delivery says something else or the server stops.
                 Log.w(TAG, "refusing binder ${session.generation}: $incompatibility")
                 synchronized(lock) {
-                    if (latest === session) rejected = RejectedDelivery(newBinder, incompatibility)
+                    if (latest === session) {
+                        setRejected(RejectedDelivery(newBinder, incompatibility))
+                        publishState()
+                    }
                 }
                 abandon(session)
                 return false
@@ -287,7 +309,7 @@ public object Porter {
             synchronized(lock) {
                 superseded = latest !== session
                 if (!superseded) {
-                    rejected = null
+                    setRejected(null)
                     // The connection that is handing over stays watched until this one takes over,
                     // and both steps happen under the one lock: a death callback never sees a
                     // connection nobody watches, and an unlink that throws publishes nothing.
@@ -300,7 +322,7 @@ public object Porter {
                     selection = selectionOf(session.backend)
                     // Published under the lock: a death arriving between the two steps would
                     // otherwise publish a connection that had already been torn down.
-                    _connection.value = session
+                    publishState()
                 }
             }
             if (superseded) {
@@ -341,9 +363,9 @@ public object Porter {
             current = null
             // An attach still in flight is superseded too: the caller says there is no binder.
             latest = null
-            rejected = null
+            setRejected(null)
             dropped?.unlink()
-            if (dropped != null) _connection.value = null
+            publishState()
         }
         if (dropped != null) {
             dropped.markLost()
@@ -364,7 +386,7 @@ public object Porter {
             wasCurrent = current === session
             if (wasCurrent) {
                 current = null
-                _connection.value = null
+                publishState()
             }
             // A connection that died while it was still attaching has nothing to publish any more,
             // and falls back to the connection that is serving, which may be one that outlives it.
@@ -372,6 +394,40 @@ public object Porter {
         }
         if (wasCurrent) runPostDeadHooks()
         return wasCurrent
+    }
+
+    /** The caller holds [lock]. Publishes [current] and [rejected], a serving connection first. */
+    private fun publishState() {
+        _connection.value = current
+        // Read after the write above: a collector it resumed inline may have published again.
+        val published = current
+        val refused = rejected
+        _state.value = when {
+            published != null -> PorterConnectionState.Connected(published)
+            refused != null -> PorterConnectionState.Incompatible(refused.why)
+            else -> PorterConnectionState.Disconnected
+        }
+    }
+
+    /** The caller holds [lock]. A binder that is already dead is not remembered. */
+    private fun setRejected(record: RejectedDelivery?) {
+        rejected?.let { it.binder.unlinkToDeath(it.recipient, 0) }
+        rejected = null
+        if (record == null) return
+        try {
+            record.binder.linkToDeath(record.recipient, 0)
+        } catch (e: RemoteException) {
+            return
+        }
+        rejected = record
+    }
+
+    private fun rejectedDied(record: RejectedDelivery) {
+        synchronized(lock) {
+            if (rejected !== record) return
+            setRejected(null)
+            publishState()
+        }
     }
 
     /** Runs on the main thread after a death has been published. */
@@ -616,11 +672,11 @@ public object Porter {
             latest = null
             selection = null
             selectionForTest = null
-            rejected = null
+            setRejected(null)
             for (record in kept.values) record.binder.unlinkToDeath(record.recipient, 0)
             kept.clear()
             postDeadHooks.clear()
-            _connection.value = null
+            publishState()
         }
         ioDispatcher = defaultIoDispatcher
         deliveryExecutor = defaultDeliveryExecutor

@@ -27,6 +27,7 @@ public final class eu/darken/porter/sdk/Porter {
 	public static final field INSTANCE Leu/darken/porter/sdk/Porter;
 	public final fun availability (Landroid/content/Context;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public final fun getConnection ()Lkotlinx/coroutines/flow/StateFlow;
+	public final fun getState ()Lkotlinx/coroutines/flow/StateFlow;
 	public final fun onBinderReceived (Landroid/os/IBinder;Ljava/lang/String;)V
 }
 
@@ -121,6 +122,30 @@ public final class eu/darken/porter/sdk/PorterConnection {
 }
 
 public final class eu/darken/porter/sdk/PorterConnectionLostException : eu/darken/porter/sdk/PorterException {
+}
+
+public abstract interface class eu/darken/porter/sdk/PorterConnectionState {
+}
+
+public final class eu/darken/porter/sdk/PorterConnectionState$Connected : eu/darken/porter/sdk/PorterConnectionState {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getConnection ()Leu/darken/porter/sdk/PorterConnection;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class eu/darken/porter/sdk/PorterConnectionState$Disconnected : eu/darken/porter/sdk/PorterConnectionState {
+	public static final field INSTANCE Leu/darken/porter/sdk/PorterConnectionState$Disconnected;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class eu/darken/porter/sdk/PorterConnectionState$Incompatible : eu/darken/porter/sdk/PorterConnectionState {
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getIncompatibility ()Leu/darken/porter/sdk/PorterIncompatibility;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
 }
 
 public abstract class eu/darken/porter/sdk/PorterException : java/lang/RuntimeException {

@@ -1,5 +1,6 @@
 package eu.darken.porter.sdk
 
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -9,5 +10,10 @@ internal class PorterPlainJvmTest {
     @Test
     fun readingTheConnectionNeedsNoMainLooper() {
         assertNull(Porter.connection.value)
+    }
+
+    @Test
+    fun readingTheStateNeedsNoMainLooper() {
+        assertEquals(PorterConnectionState.Disconnected, Porter.state.value)
     }
 }
