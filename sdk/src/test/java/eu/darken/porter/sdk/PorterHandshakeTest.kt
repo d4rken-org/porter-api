@@ -138,14 +138,19 @@ internal class PorterHandshakeTest {
         assertTrue(Porter.availability(context) is PorterAvailability.Incompatible)
     }
 
+    /** The refused session lets go of the binder; only the refusal watches it, until it is cleared. */
     @Test
-    fun aRefusedBinderIsNotWatchedForDeath() {
+    fun aRefusedBinderIsWatchedOnlyForItsRefusal() {
         val fake = FakePorterService()
         fake.protocolVersion = 1
 
         Porter.onBinderReceived(fake, PACKAGE)
 
         val shadow: ShadowBinder = Shadow.extract(fake)
+        assertEquals(1, shadow.deathRecipients.size)
+
+        Porter.onBinderReceived(FakePorterService(), PACKAGE)
+
         assertTrue(shadow.deathRecipients.isEmpty())
     }
 
