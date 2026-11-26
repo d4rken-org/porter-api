@@ -87,11 +87,11 @@ internal open class FakePorterService : IPorterService.Stub() {
         return 0
     }
 
-    override fun requestPermission(requestCode: Int) {
+    open override fun requestPermission(requestCode: Int) {
         requestedPermissionCode = requestCode
     }
 
-    override fun checkSelfPermission(): Boolean {
+    open override fun checkSelfPermission(): Boolean {
         selfPermissionQueries++
         checkTimePermissionPush?.let {
             checkTimePermissionPush = null
