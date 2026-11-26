@@ -99,10 +99,13 @@ public class PorterConnection internal constructor(
             // connection sending the request and its server answering, ahead of it being marked
             // lost.
             val current = Porter.isCurrent(this@PorterConnection)
-            val waiting: CompletableDeferred<PermissionResult>
+            val waiting: CompletableDeferred<PermissionResult>?
             val pushes: Int
             synchronized(permissionLock) {
-                waiting = (if (lost) null else pendingRequests.remove(requestCode)) ?: return
+                if (lost) return
+                // A caller that stopped waiting leaves no entry, and the user's answer is still
+                // the state.
+                waiting = pendingRequests.remove(requestCode)
                 // Applied here rather than when the caller resumes: a state push that lands in
                 // between is newer than this result, and the caller may resume after it.
                 if (current) {
@@ -113,6 +116,7 @@ public class PorterConnection internal constructor(
                 }
                 pushes = permissionStateGeneration
             }
+            if (waiting == null) return
             if (current) {
                 waiting.complete(PermissionResult(allowed, pushes))
             } else {
@@ -237,7 +241,9 @@ public class PorterConnection internal constructor(
      * [permission] as it arrives, and what is returned is that state once this call resumes: a
      * state the server pushed after the answer is newer and wins.
      *
-     * A prompt already shown is not withdrawn by cancelling this call; its late answer is dropped.
+     * A prompt already shown is not withdrawn by cancelling this call, and its answer still lands in
+     * [permission]. A denial that arrives after the cancellation keeps whatever `permanentlyDenied`
+     * held before.
      *
      * @throws PorterConnectionLostException if this connection is replaced or dies before the
      * server answers

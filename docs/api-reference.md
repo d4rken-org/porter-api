@@ -53,7 +53,7 @@ suspend fun ensureAccess(connection: PorterConnection): Boolean {
 }
 ```
 
-A prompt already shown is not withdrawn by cancelling the call; its late answer is dropped. If the connection is replaced or dies before the user answers, the call fails with `PorterConnectionLostException`.
+A prompt already shown is not withdrawn by cancelling the call, and its answer still lands in `connection.permission`. A denial that arrives after the cancellation keeps whatever `permanentlyDenied` held before. If the connection is replaced or dies before the user answers, the call fails with `PorterConnectionLostException`.
 
 ### Remote binder call
 
