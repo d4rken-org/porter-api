@@ -1,0 +1,116 @@
+name: Tagged releases
+
+on:
+  push:
+    tags:
+      - '[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+-*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to release, e.g. 0.10.0'
+        type: string
+        required: true
+      dry_run:
+        description: 'When true: wait for JitPack and render the notes, but create no release.'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    concurrency:
+      group: release-${{ inputs.tag || github.ref_name }}
+      cancel-in-progress: false
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      # The scripts come from the ref this workflow runs on; what is released is read from the tag.
+      # A dispatch can then release a tag that predates the scripts or carries a broken copy.
+      - name: Checkout the release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate the tag
+        id: tag
+        run: |
+          set -euo pipefail
+          ./tools/release/version.sh check-tag "${TAG}"
+          commit=$(git rev-parse --verify "refs/tags/${TAG}^{commit}")
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
+          if [[ "${TAG}" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip a release that already exists
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "Release ${TAG} already exists; nothing to do."
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for JitPack to build the tag
+        if: steps.existing.outputs.exists != 'true'
+        env:
+          COMMIT: ${{ steps.tag.outputs.commit }}
+        run: ./tools/release/await-jitpack.sh "${TAG}" "${COMMIT}"
+
+      - name: Render the release notes header
+        if: steps.existing.outputs.exists != 'true'
+        run: |
+          set -euo pipefail
+          floor=$(git show "${TAG}:sdk/src/main/java/eu/darken/porter/sdk/PorterProtocolWire.kt" \
+            | sed -nE 's/^ *const val MIN_SERVER_VERSION: Int = ([0-9]+)$/\1/p')
+          if [[ -z "$floor" ]]; then
+            echo "::error::Could not read MIN_SERVER_VERSION from PorterProtocolWire.kt"
+            exit 1
+          fi
+          {
+            echo '```kotlin'
+            echo "implementation(\"com.github.d4rken-org.porter-api:sdk:${TAG}\")"
+            echo '```'
+            echo ""
+            echo "Needs a Porter build that speaks protocol ${floor} or newer."
+            echo ""
+            echo "[Integration guide](https://porter.darken.eu/developers) · [API reference](https://github.com/${GITHUB_REPOSITORY}/blob/${TAG}/docs/api-reference.md)"
+          } > header.md
+          {
+            echo "## Release notes header"
+            echo ""
+            cat header.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Create the GitHub release
+        if: steps.existing.outputs.exists != 'true' && env.DRY_RUN != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ steps.tag.outputs.prerelease }}
+        run: |
+          set -euo pipefail
+          args=(--verify-tag --title "Porter SDK ${TAG}" --notes "$(cat header.md)" --generate-notes)
+          # A tag pushed during the JitPack wait decides whether this one is still the newest.
+          git fetch --quiet --tags origin
+          if [[ "${PRERELEASE}" == "true" ]]; then
+            args+=(--prerelease --latest=false)
+          elif [[ "$(./tools/release/version.sh is-latest-stable "${TAG}")" == "true" ]]; then
+            args+=(--latest)
+          else
+            args+=(--latest=false)
+          fi
+          gh release create "${TAG}" --repo "${GITHUB_REPOSITORY}" "${args[@]}"

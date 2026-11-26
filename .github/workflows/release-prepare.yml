@@ -1,0 +1,238 @@
+name: Release prepare
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump_kind:
+        description: 'How to bump the latest X.Y.Z tag (ignored if version_override is set)'
+        type: choice
+        options: [patch, minor, major]
+        default: minor
+      version_override:
+        description: 'Explicit version, e.g. 1.0.0-rc1 (a suffix makes it a pre-release)'
+        type: string
+        default: ''
+      expected_current:
+        description: 'Safety check: fail unless the latest X.Y.Z tag is this, e.g. 0.9.0'
+        type: string
+        default: ''
+      dry_run:
+        description: 'When true: compute and validate only. When false: tag and push.'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-prepare
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    name: Compute and validate
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      checks: read
+    outputs:
+      current: ${{ steps.plan.outputs.current }}
+      new: ${{ steps.plan.outputs.new }}
+      validated_sha: ${{ steps.validated.outputs.sha }}
+    env:
+      INPUT_BUMP_KIND: ${{ inputs.bump_kind }}
+      INPUT_VERSION_OVERRIDE: ${{ inputs.version_override }}
+      INPUT_EXPECTED_CURRENT: ${{ inputs.expected_current }}
+    steps:
+      - name: Guard ref must be main
+        run: |
+          if [[ "${GITHUB_REF}" != "refs/heads/main" ]]; then
+            echo "::error::Must dispatch from main, got ${GITHUB_REF}"
+            exit 1
+          fi
+
+      - name: Record validated commit
+        id: validated
+        run: echo "sha=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for the required checks on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          POLL_ATTEMPTS: "40"
+          POLL_INTERVAL_SECONDS: "30"
+        run: |
+          set -euo pipefail
+          REPO="${GITHUB_REPOSITORY}"
+          SHA="${GITHUB_SHA}"
+
+          # Failing to read the ruleset is fatal: treating it as "no required checks" would let a
+          # transient API error release an unvalidated commit.
+          if ! RULES=$(gh api "/repos/${REPO}/rules/branches/main"); then
+            echo "::error::Could not read the branch ruleset for ${REPO}. Refusing to release without a health gate."
+            exit 1
+          fi
+          # A rule that names an integration is only met by a check run that app produced.
+          REQUIRED=$(echo "$RULES" \
+            | jq '[.[] | select(.type == "required_status_checks") | .parameters.required_status_checks[] | {context, integration_id}] | unique')
+          if [[ "$REQUIRED" == "[]" || -z "$REQUIRED" ]]; then
+            echo "::error::The main branch ruleset declares no required status checks. Refusing to release without a health gate."
+            exit 1
+          fi
+          echo "Required checks: $(echo "$REQUIRED" | jq -r 'map(.context) | join(", ")')"
+
+          PASSING_CONCLUSIONS='["success","neutral","skipped"]'
+          attempt=1
+          while true; do
+            RUNS=$(gh api "/repos/${REPO}/commits/${SHA}/check-runs?per_page=100" \
+              --jq '.check_runs | map({name, app_id: .app.id, status, conclusion: (.conclusion // "pending"), started_at})')
+
+            FAILED=()
+            PENDING=()
+            while IFS=$'\t' read -r check_name integration_id; do
+              result=$(echo "$RUNS" | jq -r --arg name "$check_name" --arg app "$integration_id" \
+                'map(select(.name == $name and ($app == "" or (.app_id | tostring) == $app))) | sort_by(.started_at) | if length == 0 then "not_found" else last | "\(.status)|\(.conclusion)" end')
+              if [[ "$result" == "not_found" ]]; then
+                PENDING+=("$check_name (not yet started)")
+                continue
+              fi
+              IFS='|' read -r status conclusion <<< "$result"
+              if [[ "$status" != "completed" ]]; then
+                PENDING+=("$check_name ($status)")
+              elif ! echo "$PASSING_CONCLUSIONS" | jq -e --arg c "$conclusion" 'index($c)' >/dev/null; then
+                FAILED+=("$check_name: $conclusion")
+              fi
+            done < <(echo "$REQUIRED" | jq -r '.[] | [.context, ((.integration_id // "") | tostring)] | @tsv')
+
+            if [[ ${#FAILED[@]} -gt 0 ]]; then
+              for item in "${FAILED[@]}"; do
+                echo "::error::Required check failed on main: $item"
+              done
+              exit 1
+            fi
+            if [[ ${#PENDING[@]} -eq 0 ]]; then
+              break
+            fi
+            if [[ "$attempt" -ge "$POLL_ATTEMPTS" ]]; then
+              for item in "${PENDING[@]}"; do
+                echo "::error::Required check still unfinished after waiting: $item"
+              done
+              exit 1
+            fi
+            echo "Waiting on ${#PENDING[@]} unfinished required check(s), attempt ${attempt}/${POLL_ATTEMPTS}:"
+            printf '  - %s\n' "${PENDING[@]}"
+            attempt=$((attempt + 1))
+            sleep "${POLL_INTERVAL_SECONDS}"
+          done
+          echo "Every required check passed on ${SHA}."
+
+      - name: Checkout validated commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          ref: ${{ steps.validated.outputs.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Compute and validate the version
+        id: plan
+        run: |
+          set -euo pipefail
+          args=("--expected-current=${INPUT_EXPECTED_CURRENT}")
+          if [[ -n "${INPUT_VERSION_OVERRIDE}" ]]; then
+            args+=("--version-override=${INPUT_VERSION_OVERRIDE}")
+          else
+            args+=("--bump-kind=${INPUT_BUMP_KIND}")
+          fi
+          ./tools/release/version.sh next "${args[@]}" | tee plan.txt
+          grep -E '^(current|new|prerelease)=' plan.txt >> "$GITHUB_OUTPUT"
+
+      - name: Write step summary
+        env:
+          CURRENT: ${{ steps.plan.outputs.current }}
+          NEW: ${{ steps.plan.outputs.new }}
+          PRERELEASE: ${{ steps.plan.outputs.prerelease }}
+          VALIDATED_SHA: ${{ steps.validated.outputs.sha }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          {
+            echo "## Release plan"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Latest release | \`${CURRENT}\` |"
+            echo "| New tag | \`${NEW}\` |"
+            echo "| Pre-release | \`${PRERELEASE}\` |"
+            echo "| Commit | \`${VALIDATED_SHA}\` |"
+            echo "| Dry run | \`${DRY_RUN}\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  push-tag:
+    name: Push tag
+    needs: plan
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    env:
+      NEW: ${{ needs.plan.outputs.new }}
+      VALIDATED_SHA: ${{ needs.plan.outputs.validated_sha }}
+    steps:
+      # A tag pushed with the workflow's own token would not start the tagged-release workflow.
+      - name: Mint App token
+        id: app-token
+        uses: actions/create-github-app-token@1b10c78c7865c340bc4f6099eb2f838309f1e8c3 #v3.1.1
+        with:
+          client-id: ${{ secrets.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Resolve bot identity
+        id: bot
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          set -euo pipefail
+          user_id=$(gh api "/users/${APP_SLUG}%5Bbot%5D" --jq .id)
+          echo "user_name=${APP_SLUG}[bot]" >> "$GITHUB_OUTPUT"
+          echo "user_email=${user_id}+${APP_SLUG}[bot]@users.noreply.github.com" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout validated commit with credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 #v7.0.1
+        with:
+          ref: ${{ needs.plan.outputs.validated_sha }}
+          fetch-depth: 0
+          persist-credentials: true
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Re-check the tag (state may have moved between jobs)
+        env:
+          INPUT_VERSION_OVERRIDE: ${{ inputs.version_override }}
+          INPUT_BUMP_KIND: ${{ inputs.bump_kind }}
+          CURRENT: ${{ needs.plan.outputs.current }}
+        run: |
+          set -euo pipefail
+          if [[ -n "${INPUT_VERSION_OVERRIDE}" ]]; then
+            arg="--version-override=${INPUT_VERSION_OVERRIDE}"
+          else
+            arg="--bump-kind=${INPUT_BUMP_KIND}"
+          fi
+          recomputed=$(./tools/release/version.sh next "--expected-current=${CURRENT}" "$arg" | sed -n 's/^new=//p')
+          if [[ "$recomputed" != "${NEW}" ]]; then
+            echo "::error::The plan said ${NEW}, the repository now yields ${recomputed}"
+            exit 1
+          fi
+
+      - name: Tag and push
+        env:
+          BOT_USER_NAME: ${{ steps.bot.outputs.user_name }}
+          BOT_USER_EMAIL: ${{ steps.bot.outputs.user_email }}
+        run: |
+          set -euo pipefail
+          git config user.name "${BOT_USER_NAME}"
+          git config user.email "${BOT_USER_EMAIL}"
+          git tag -a "${NEW}" -m "Porter SDK ${NEW}" "${VALIDATED_SHA}"
+          git push origin "refs/tags/${NEW}"
+          {
+            echo "## Tagged"
+            echo ""
+            echo "\`${NEW}\` at \`${VALIDATED_SHA}\`. [Tagged releases](../../actions/workflows/release-tag.yml) takes it from here."
+          } >> "$GITHUB_STEP_SUMMARY"
