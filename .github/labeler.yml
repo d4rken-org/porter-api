@@ -54,4 +54,5 @@
           - ".github/labeler.yml"
           - "jitpack.yml"
           - "tools/verify-publication.py"
+          - "tools/release/**"
           - "tests/consumer/**"
